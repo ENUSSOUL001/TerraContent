@@ -1,0 +1,46 @@
+name: Consolidate All Files
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  consolidate-and-commit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Consolidate files into one Markdown
+        run: |
+          OUTPUT_FILE="consolidated_view.md"
+          echo "# Consolidated Project View" > $OUTPUT_FILE
+          echo "" >> $OUTPUT_FILE
+
+          find . -type f -not -path "./.git/*" -not -name "$OUTPUT_FILE" -not -path "./.github/*" | while read -r file; do
+            if file -b --mime-type "$file" | grep -q "text"; then
+              echo "---" >> $OUTPUT_FILE
+              echo "## File: \`$file\`" >> $OUTPUT_FILE
+              echo "" >> $OUTPUT_FILE
+              echo '```' >> $OUTPUT_FILE
+              cat "$file" >> $OUTPUT_FILE
+              echo "" >> $OUTPUT_FILE
+              echo '```' >> $OUTPUT_FILE
+              echo "" >> $OUTPUT_FILE
+            fi
+          done
+
+      - name: Commit and push the consolidated file
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add consolidated_view.md
+          if [ -n "$(git status --porcelain)" ]; then
+            git commit -m "docs: Create consolidated project view"
+            git push
+          else
+            echo "No changes to the consolidated file."
+          fi
