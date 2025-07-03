@@ -15,10 +15,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: 1. Clean repository but keep ZIP and workflow
+      - name: 1. Clean repository but keep critical files
         run: |
-          echo "Clearing repository, preserving .github folder and the zip file..."
-          find . -mindepth 1 ! -path './.github*' ! -path './terra-awg-main (2).zip' -exec rm -rf {} +
+          echo "Clearing repository, preserving .git, .github, and the zip file..."
+          find . -mindepth 1 ! -path './.git*' ! -path './.github*' ! -path './terra-awg-main (2).zip' -exec rm -rf {} +
           echo "Repository cleared."
 
       - name: 2. Unpack and relocate new project
