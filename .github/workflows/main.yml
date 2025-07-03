@@ -1,4 +1,4 @@
-name: Create Organized Project View
+name: Create Structured Project Documentation
 on:
   workflow_dispatch:
   push:
@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  consolidate-and-commit:
+  build-documentation:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -15,22 +15,18 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Install tree utility
+      - name: Install tree utility for file ordering
         run: sudo apt-get update && sudo apt-get install -y tree
 
-      - name: Consolidate files in order
+      - name: Generate organized documentation
         run: |
-          OUTPUT_FILE="consolidated_project.md"
-
-          # 1. Start with the main title
-          echo "# Consolidated Project Documentation" > $OUTPUT_FILE
+          OUTPUT_FILE="consolidated_documentation.md"
+          
+          echo "# Project Documentation" > $OUTPUT_FILE
           echo "" >> $OUTPUT_FILE
 
-          # 2. Append README.md if it exists
           if [ -f "readme.md" ]; then
-            echo "---" >> $OUTPUT_FILE
-            echo "## 1. Main README" >> $OUTPUT_FILE
-            echo "" >> $OUTPUT_FILE
+            echo "## 1. README" >> $OUTPUT_FILE
             echo '```markdown' >> $OUTPUT_FILE
             cat readme.md >> $OUTPUT_FILE
             echo "" >> $OUTPUT_FILE
@@ -38,11 +34,8 @@ jobs:
             echo "" >> $OUTPUT_FILE
           fi
 
-          # 3. Append design.md if it exists
           if [ -f "design.md" ]; then
-            echo "---" >> $OUTPUT_FILE
             echo "## 2. Design Document" >> $OUTPUT_FILE
-            echo "" >> $OUTPUT_FILE
             echo '```markdown' >> $OUTPUT_FILE
             cat design.md >> $OUTPUT_FILE
             echo "" >> $OUTPUT_FILE
@@ -50,22 +43,30 @@ jobs:
             echo "" >> $OUTPUT_FILE
           fi
 
-          # 4. Generate and append the file tree
-          echo "---" >> $OUTPUT_FILE
           echo "## 3. Project File Tree" >> $OUTPUT_FILE
-          echo "" >> $OUTPUT_FILE
           echo '```' >> $OUTPUT_FILE
           tree -I ".git|.github|${OUTPUT_FILE}" >> $OUTPUT_FILE
           echo '```' >> $OUTPUT_FILE
           echo "" >> $OUTPUT_FILE
 
-          # 5. Append all other text files, sorted for consistency
-          echo "---" >> $OUTPUT_FILE
           echo "## 4. Source Files" >> $OUTPUT_FILE
           echo "" >> $OUTPUT_FILE
-          find . -type f -not -path "./.git/*" -not -path "./.github/*" -not -name "$OUTPUT_FILE" -not -name "readme.md" -not -name "design.md" | sort | while read -r file; do
+          
+          current_dir=""
+          EXCLUSIONS="-I .git -I .github -I ${OUTPUT_FILE} -I readme.md -I design.md"
+
+          tree -if --noreport $EXCLUSIONS | while read -r file; do
+            if [ ! -f "$file" ]; then continue; fi
+
             if file -b --mime-type "$file" | grep -q "text"; then
-              echo "### File: \`$file\`" >> $OUTPUT_FILE
+              file_dir=$(dirname "$file")
+              if [ "$file_dir" != "$current_dir" ]; then
+                current_dir="$file_dir"
+                echo "### Folder: \`$current_dir\`" >> $OUTPUT_FILE
+                echo "" >> $OUTPUT_FILE
+              fi
+              
+              echo "#### File: \`$file\`" >> $OUTPUT_FILE
               echo '```' >> $OUTPUT_FILE
               cat "$file" >> $OUTPUT_FILE
               echo "" >> $OUTPUT_FILE
@@ -74,14 +75,14 @@ jobs:
             fi
           done
 
-      - name: Commit and push the consolidated file
+      - name: Commit and push documentation
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add consolidated_project.md
+          git add consolidated_documentation.md
           if [ -n "$(git status --porcelain)" ]; then
-            git commit -m "docs: Update organized project documentation"
+            git commit -m "docs: Generate structured project documentation"
             git push
           else
-            echo "No changes to the consolidated project file."
+            echo "No changes to commit."
           fi
