@@ -15,10 +15,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: 1. Clean repository except workflow files
+      - name: 1. Clean repository but keep ZIP and workflow
         run: |
-          echo "Clearing repository, preserving .github folder..."
-          find . -mindepth 1 ! -path './.github*' -exec rm -rf {} +
+          echo "Clearing repository, preserving .github folder and the zip file..."
+          find . -mindepth 1 ! -path './.github*' ! -path './terra-awg-main (2).zip' -exec rm -rf {} +
           echo "Repository cleared."
 
       - name: 2. Unpack and relocate new project
@@ -71,10 +71,8 @@ jobs:
           echo "" >> $OUTPUT_FILE
           
           current_dir=""
-          # This find command structure ensures a true top-down directory traversal
           find . -type d -name ".git" -prune -o -type d -name ".github" -prune -o -print | sort | while read -r p; do
             if [ -d "$p" ]; then
-              # Find files only in the current directory level
               find "$p" -maxdepth 1 -type f \
                 -not -name "README.md" \
                 -not -name "Design.md" \
@@ -84,7 +82,6 @@ jobs:
                 | sort | while read -r file; do
                   if file -b --mime-type "$file" | grep -q "text"; then
                     file_dir=$(dirname "$file")
-                    # Print the folder header only for a new folder
                     if [ "$file_dir" != "$current_dir" ]; then
                       current_dir="$file_dir"
                       echo "### Folder: \`$current_dir\`" >> $OUTPUT_FILE
