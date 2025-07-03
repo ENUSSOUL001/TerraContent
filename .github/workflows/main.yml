@@ -1,4 +1,4 @@
-name: Create Structured Project Documentation
+name: Unpack and Generate Project Documentation
 on:
   workflow_dispatch:
   push:
@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  build-documentation:
+  build-docs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -15,74 +15,101 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Install tree utility for file ordering
+      - name: 1. Clean repository except workflow files
+        run: |
+          echo "Clearing repository, preserving .github folder..."
+          find . -mindepth 1 ! -path './.github*' -exec rm -rf {} +
+          echo "Repository cleared."
+
+      - name: 2. Unpack and relocate new project
+        run: |
+          unzip -o "terra-awg-main (2).zip"
+          rsync -a --remove-source-files terra-awg-main/ .
+          rm -rf terra-awg-main
+          rm "terra-awg-main (2).zip"
+          echo "Project unpacked and moved to root."
+
+      - name: 3. Install tree utility
         run: sudo apt-get update && sudo apt-get install -y tree
 
-      - name: Generate organized documentation
+      - name: 4. Generate Organized Documentation
         run: |
-          OUTPUT_FILE="consolidated_documentation.md"
+          OUTPUT_FILE="project_overview.md"
           
-          echo "# Project Documentation" > $OUTPUT_FILE
+          echo "# Project Overview" > $OUTPUT_FILE
           echo "" >> $OUTPUT_FILE
 
-          if [ -f "readme.md" ]; then
+          # Part A: Append README.md
+          if [ -f "README.md" ]; then
             echo "## 1. README" >> $OUTPUT_FILE
             echo '```markdown' >> $OUTPUT_FILE
-            cat readme.md >> $OUTPUT_FILE
+            cat README.md >> $OUTPUT_FILE
             echo "" >> $OUTPUT_FILE
             echo '```' >> $OUTPUT_FILE
             echo "" >> $OUTPUT_FILE
           fi
 
-          if [ -f "design.md" ]; then
+          # Part B: Append Design.md
+          if [ -f "Design.md" ]; then
             echo "## 2. Design Document" >> $OUTPUT_FILE
             echo '```markdown' >> $OUTPUT_FILE
-            cat design.md >> $OUTPUT_FILE
+            cat Design.md >> $OUTPUT_FILE
             echo "" >> $OUTPUT_FILE
             echo '```' >> $OUTPUT_FILE
             echo "" >> $OUTPUT_FILE
           fi
 
+          # Part C: Generate the visual file tree with exclusions
           echo "## 3. Project File Tree" >> $OUTPUT_FILE
           echo '```' >> $OUTPUT_FILE
-          tree -I ".git|.github|${OUTPUT_FILE}" >> $OUTPUT_FILE
+          tree -I ".git|.github|LICENSE|.gitignore|${OUTPUT_FILE}|project_overview.md" >> $OUTPUT_FILE
           echo '```' >> $OUTPUT_FILE
           echo "" >> $OUTPUT_FILE
 
+          # Part D: Append source files in file tree order with exclusions
           echo "## 4. Source Files" >> $OUTPUT_FILE
           echo "" >> $OUTPUT_FILE
           
           current_dir=""
-          EXCLUSIONS="-I .git -I .github -I ${OUTPUT_FILE} -I readme.md -I design.md"
-
-          tree -if --noreport $EXCLUSIONS | while read -r file; do
-            if [ ! -f "$file" ]; then continue; fi
-
-            if file -b --mime-type "$file" | grep -q "text"; then
-              file_dir=$(dirname "$file")
-              if [ "$file_dir" != "$current_dir" ]; then
-                current_dir="$file_dir"
-                echo "### Folder: \`$current_dir\`" >> $OUTPUT_FILE
-                echo "" >> $OUTPUT_FILE
-              fi
-              
-              echo "#### File: \`$file\`" >> $OUTPUT_FILE
-              echo '```' >> $OUTPUT_FILE
-              cat "$file" >> $OUTPUT_FILE
-              echo "" >> $OUTPUT_FILE
-              echo '```' >> $OUTPUT_FILE
-              echo "" >> $OUTPUT_FILE
+          # This find command structure ensures a true top-down directory traversal
+          find . -type d -name ".git" -prune -o -type d -name ".github" -prune -o -print | sort | while read -r p; do
+            if [ -d "$p" ]; then
+              # Find files only in the current directory level
+              find "$p" -maxdepth 1 -type f \
+                -not -name "README.md" \
+                -not -name "Design.md" \
+                -not -name "LICENSE" \
+                -not -name ".gitignore" \
+                -not -name "$OUTPUT_FILE" \
+                | sort | while read -r file; do
+                  if file -b --mime-type "$file" | grep -q "text"; then
+                    file_dir=$(dirname "$file")
+                    # Print the folder header only for a new folder
+                    if [ "$file_dir" != "$current_dir" ]; then
+                      current_dir="$file_dir"
+                      echo "### Folder: \`$current_dir\`" >> $OUTPUT_FILE
+                      echo "" >> $OUTPUT_FILE
+                    fi
+                    
+                    echo "#### File: \`$file\`" >> $OUTPUT_FILE
+                    echo '```' >> $OUTPUT_FILE
+                    cat "$file" >> $OUTPUT_FILE
+                    echo "" >> $OUTPUT_FILE
+                    echo '```' >> $OUTPUT_FILE
+                    echo "" >> $OUTPUT_FILE
+                  fi
+                done
             fi
           done
 
-      - name: Commit and push documentation
+      - name: 5. Commit only the documentation file
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add consolidated_documentation.md
+          git add project_overview.md
           if [ -n "$(git status --porcelain)" ]; then
-            git commit -m "docs: Generate structured project documentation"
+            git commit -m "docs: Generate consolidated project overview"
             git push
           else
-            echo "No changes to commit."
+            echo "No changes to the documentation file."
           fi
