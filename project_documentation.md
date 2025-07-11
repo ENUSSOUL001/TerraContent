@@ -157,6 +157,8 @@ maintaining normal world progression.
 │   │   ├── Jungle.h
 │   │   ├── MarbleCave.cpp
 │   │   ├── MarbleCave.h
+│   │   ├── Meteorite.cpp
+│   │   ├── Meteorite.h
 │   │   ├── Ocean.cpp
 │   │   ├── Ocean.h
 │   │   ├── Snow.cpp
@@ -320,7 +322,7 @@ maintaining normal world progression.
 └── util
     └── importStructure.py
 
-18 directories, 207 files
+18 directories, 209 files
 ```
 
 ## 4. Source Files
@@ -937,6 +939,9 @@ height = 1800
 # Difficulty: journey/classic/expert/master
 mode = classic
 
+# Evil biome: RANDOM/corruption/crimson
+evil = RANDOM
+
 # Add a starter home at the spawn point.
 home = false
 
@@ -961,6 +966,9 @@ doubleTrouble = false
 shattered = false
 
 # Flood the majority of the world surface.
+#
+# Note that this may prevent meteorites. Also, Terraria's liquid engine
+# has poor performance when settling large bodies of water.
 sunken = false
 
 # Only generate non-spreading biomes.
@@ -986,6 +994,10 @@ patchesSize = 1.0
 # Activates "for the worthy" secret seed.
 forTheWorthy = false
 
+# Number of meteorites to place.
+meteorites = 0
+meteoriteSize = 1.0
+
 # Placement frequency multipliers. 0.5 means half the
 # normal amount, 2.0 means double the normal amount.
 ore = 1.0
@@ -1006,6 +1018,8 @@ aetherSize = 1.0
 dungeonSize = 1.0
 templeSize = 1.0
 evilSize = 1.0
+oceanSize = 1.0
+oceanCaveSize = 1.0
 marbleFreq = 1.0
 marbleSize = 1.0
 graniteFreq = 1.0
@@ -1022,6 +1036,8 @@ glowingMossSize = 1.0
 snowSize = 1.0
 desertSize = 1.0
 jungleSize = 1.0
+# Controls how flat/mountainous to generate surface terrain.
+surfaceAmplitude = 1.0
 
 [extra]
 # Output a map preview image.
@@ -1347,6 +1363,18 @@ GameMode parseGameMode(const std::string &mode)
     return GameMode::classic;
 }
 
+EvilBiome parseEvilBiome(const std::string &evil)
+{
+    if (evil == "corruption") {
+        return EvilBiome::corruption;
+    } else if (evil == "crimson") {
+        return EvilBiome::crimson;
+    } else if (evil != "RANDOM") {
+        std::cout << "Unknown evil '" << evil << "'\n";
+    }
+    return EvilBiome::random;
+}
+
 int parseEquipment(const std::string &equipment)
 {
     if (equipment == "iron") {
@@ -1357,6 +1385,8 @@ int parseEquipment(const std::string &equipment)
         return ItemID::hellstoneBar;
     } else if (equipment == "mythril") {
         return ItemID::mythrilBar;
+    } else if (equipment == "debug") {
+        return ItemID::zenith;
     } else if (equipment != "none") {
         std::cout << "Unknown equipment '" << equipment << "'\n";
     }
@@ -1433,6 +1463,7 @@ Config readConfig(Random &rnd)
         6400,
         1800,
         GameMode::classic,
+        EvilBiome::random,
         false, // starterHome
         0,     // equipment
         false, // doubleTrouble
@@ -1446,6 +1477,8 @@ Config readConfig(Random &rnd)
         0.0,   // patchesTemperature
         1.0,   // patchesSize
         false, // forTheWorthy
+        0,     // meteorites
+        1.0,   // meteoriteSize
         1.0,   // ore
         1.0,   // lifeCrystals
         1.0,   // manaCrystals
@@ -1463,6 +1496,8 @@ Config readConfig(Random &rnd)
         1.0,   // dungeonSize
         1.0,   // templeSize
         1.0,   // evilSize
+        1.0,   // oceanSize
+        1.0,   // oceanCaveSize
         1.0,   // marbleFreq
         1.0,   // marbleSize
         1.0,   // graniteFreq
@@ -1478,6 +1513,7 @@ Config readConfig(Random &rnd)
         1.0,   // snowSize
         1.0,   // desertSize
         1.0,   // jungleSize
+        1.0,   // surfaceAmplitude
         true}; // map
     if (!std::filesystem::exists(confName)) {
         std::ofstream out(confName, std::ios::out);
@@ -1497,6 +1533,7 @@ Config readConfig(Random &rnd)
     READ_CONF_VALUE(world, width, Integer);
     READ_CONF_VALUE(world, height, Integer);
     conf.mode = parseGameMode(reader.Get("world", "mode", "classic"));
+    conf.evil = parseEvilBiome(reader.Get("world", "evil", "RANDOM"));
     READ_CONF_VALUE(world, home, Boolean);
     conf.equipment =
         parseEquipment(reader.Get("variation", "equipment", "none"));
@@ -1511,6 +1548,8 @@ Config readConfig(Random &rnd)
     READ_CONF_VALUE(variation, patchesTemperature, Real);
     READ_CONF_AREA_VALUE(variation, patchesSize);
     READ_CONF_VALUE(variation, forTheWorthy, Boolean);
+    READ_CONF_VALUE(variation, meteorites, Integer);
+    READ_CONF_AREA_VALUE(variation, meteoriteSize);
     READ_CONF_VALUE(variation, ore, Real);
     READ_CONF_VALUE(variation, lifeCrystals, Real);
     READ_CONF_VALUE(variation, manaCrystals, Real);
@@ -1528,6 +1567,8 @@ Config readConfig(Random &rnd)
     READ_CONF_VALUE(variation, dungeonSize, Real);
     READ_CONF_AREA_VALUE(variation, templeSize);
     READ_CONF_AREA_VALUE(variation, evilSize);
+    READ_CONF_VALUE(variation, oceanSize, Real);
+    READ_CONF_VALUE(variation, oceanCaveSize, Real);
     READ_CONF_VALUE(variation, marbleFreq, Real);
     READ_CONF_AREA_VALUE(variation, marbleSize);
     READ_CONF_VALUE(variation, graniteFreq, Real);
@@ -1543,6 +1584,7 @@ Config readConfig(Random &rnd)
     READ_CONF_VALUE(variation, snowSize, Real);
     READ_CONF_VALUE(variation, desertSize, Real);
     READ_CONF_VALUE(variation, jungleSize, Real);
+    READ_CONF_VALUE(variation, surfaceAmplitude, Real);
     READ_CONF_VALUE(extra, map, Boolean);
     return conf;
 }
@@ -1560,12 +1602,15 @@ class Random;
 
 enum class GameMode { journey = 3, classic = 0, expert = 1, master = 2 };
 
+enum class EvilBiome { random, corruption, crimson };
+
 struct Config {
     std::string name;
     std::string seed;
     int width;
     int height;
     GameMode mode;
+    EvilBiome evil;
     bool home;
     int equipment;
     bool doubleTrouble;
@@ -1579,6 +1624,8 @@ struct Config {
     double patchesTemperature;
     double patchesSize;
     bool forTheWorthy;
+    int meteorites;
+    double meteoriteSize;
     double ore;
     double lifeCrystals;
     double manaCrystals;
@@ -1596,6 +1643,8 @@ struct Config {
     double dungeonSize;
     double templeSize;
     double evilSize;
+    double oceanSize;
+    double oceanCaveSize;
     double marbleFreq;
     double marbleSize;
     double graniteFreq;
@@ -1611,6 +1660,7 @@ struct Config {
     double snowSize;
     double desertSize;
     double jungleSize;
+    double surfaceAmplitude;
     bool map;
 
     std::string getFilename() const;
@@ -1647,6 +1697,7 @@ Config readConfig(Random &rnd);
 #include "biomes/Hive.h"
 #include "biomes/Jungle.h"
 #include "biomes/MarbleCave.h"
+#include "biomes/Meteorite.h"
 #include "biomes/Ocean.h"
 #include "biomes/Snow.h"
 #include "biomes/SpiderNest.h"
@@ -1704,6 +1755,7 @@ enum class Step {
     genCrimson,
     genCorruption,
     applyQueuedEvil,
+    genMeteorite,
     genAsteroidField,
     genGemCave,
     genSpiderNest,
@@ -1774,6 +1826,7 @@ inline std::array baseBiomeRules{
     Step::genSecondaryCrimson,
     Step::genSecondaryCorruption,
     Step::applyQueuedEvil,
+    Step::genMeteorite,
     Step::genHardmodeOres,
     Step::genHallow,
     Step::swapResources,
@@ -1816,6 +1869,7 @@ inline std::array patchesBiomeRules{
     Step::genSecondaryCrimson,
     Step::genSecondaryCorruption,
     Step::applyQueuedEvil,
+    Step::genMeteorite,
     Step::genHardmodeOres,
     Step::genHallow,
     Step::swapResources,
@@ -1866,6 +1920,7 @@ void doGenStep(Step step, LocationBins &locations, Random &rnd, World &world)
             applyQueuedEvil(rnd, world);
         }
         break;
+        GEN_STEP(genMeteorite)
         GEN_STEP(genAsteroidField)
         GEN_STEP(genGemCave)
         GEN_STEP(genSpiderNest)
@@ -4163,7 +4218,9 @@ int main()
     rnd.setSeed(conf.seed);
     World world{conf};
 
-    world.isCrimson = rnd.getBool();
+    world.isCrimson = conf.evil == EvilBiome::random
+                          ? rnd.getBool()
+                          : conf.evil == EvilBiome::crimson;
     world.copperVariant = rnd.select({TileID::copperOre, TileID::tinOre});
     world.ironVariant = rnd.select({TileID::ironOre, TileID::leadOre});
     world.silverVariant = rnd.select({TileID::silverOre, TileID::tungstenOre});
@@ -4658,7 +4715,7 @@ void computeSurfaceLevel(Random &rnd, World &world)
                    std::min(
                        {0.1 * std::abs(center - x) + 15,
                         0.08 * std::min(x, world.getWidth() - x) + 5,
-                        50.0}) *
+                        world.conf.surfaceAmplitude * 50.0}) *
                        rnd.getCoarseNoise(x, 0);
         world.getSurfaceLevel(x) = curY;
         if (delta == curY - prevY) {
@@ -5473,10 +5530,13 @@ void genCloud(Random &rnd, World &world)
         int x = rnd.getInt(
             cloudScale * 200,
             world.getWidth() - cloudScale * 200 - width);
-        int maxY = 0.45 * world.getUndergroundLevel() - height;
+        int maxY =
+            std::max<int>(0.45 * world.getUndergroundLevel() - height, 50);
         int y = rnd.getInt(
-            numClouds == 3 ? std::midpoint<int>(cloudScale * 100, maxY)
-                           : cloudScale * 100,
+            std::min<int>(
+                numClouds == 3 ? std::midpoint<int>(cloudScale * 100, maxY)
+                               : cloudScale * 100,
+                maxY - 1),
             maxY);
         if (!world.regionPasses(
                 x - 25,
@@ -7157,11 +7217,15 @@ Point selectGroveLocation(double &groveSize, Random &rnd, World &world)
     partialWalls.insert(
         WallVariants::underworld.begin(),
         WallVariants::underworld.end());
+    int safeMinY =
+        (2 * world.getCavernLevel() + world.getUnderworldLevel()) / 3;
+    int safeMaxY =
+        (world.getCavernLevel() + 2 * world.getUnderworldLevel()) / 3;
     double shrink = groveSize / 10000.0;
     for (int numTries = 0; numTries < 5000; ++numTries, groveSize -= shrink) {
         auto [x, y] = findStoneCave(
-            world.getCavernLevel() + groveSize,
-            world.getUnderworldLevel() - groveSize,
+            std::min<int>(world.getCavernLevel() + groveSize, safeMinY),
+            std::max<int>(world.getUnderworldLevel() - groveSize, safeMaxY),
             rnd,
             world);
         if (x < 75 + groveSize || x > world.getWidth() - 75 - groveSize) {
@@ -8347,10 +8411,145 @@ void genMarbleCave(Random &rnd, World &world);
 
 ```
 
+#### File: `./src/biomes/Meteorite.cpp`
+```
+#include "biomes/Meteorite.h"
+
+#include "Config.h"
+#include "Random.h"
+#include "World.h"
+#include "ids/WallID.h"
+#include "structures/Dungeon.h"
+#include "structures/StructureUtil.h"
+#include "vendor/frozen/set.h"
+#include <iostream>
+
+inline constexpr auto emptyBlocks = frozen::make_set<int>(
+    {TileID::empty,
+     TileID::livingWood,
+     TileID::leaf,
+     TileID::livingMahogany,
+     TileID::mahoganyLeaf,
+     TileID::meteorite});
+
+void placeMeteorite(int x, int y, Random &rnd, World &world)
+{
+    int size = world.conf.meteoriteSize * rnd.getDouble(26, 30);
+    int wallID = rnd.select(WallVariants::underworld);
+    for (int i = -size; i < size; ++i) {
+        for (int j = -size; j < size; ++j) {
+            Tile &tile = world.getTile(x + i, y + j);
+            double dist = std::hypot(i, j) / size;
+            double threshold = 1.8 * (dist - 0.2) * (0.97 - dist);
+            if ((std::abs(i) > 4 || j > 0) &&
+                std::abs(rnd.getFineNoise(x + 2 * i, y + 2 * j)) < threshold) {
+                if (tile.blockID != TileID::empty &&
+                    (dist < 0.7 || fnv1a32pt(x + i, y + j) % 13 < 4)) {
+                    if (j < 2 && emptyBlocks.contains(tile.blockID)) {
+                        tile = {};
+                    } else {
+                        tile.blockID = TileID::meteorite;
+                        tile.wallID = wallID;
+                    }
+                }
+            } else if (dist < 0.6) {
+                if (tile.blockID != TileID::empty &&
+                    (dist < 0.35 || fnv1a32pt(x + i, y + j) % 13 < 8)) {
+                    tile.blockID = TileID::empty;
+                    if (j > size / 4) {
+                        tile.liquid = Liquid::lava;
+                    }
+                }
+                if (tile.wallID != WallID::empty) {
+                    tile.wallID =
+                        (tile.blockID != TileID::empty ||
+                         std::abs(rnd.getFineNoise(3 * (x + i), 3 * (y + j))) >
+                             0.06)
+                            ? wallID
+                            : WallID::empty;
+                }
+            }
+        }
+    }
+    world.queuedTreasures.emplace_back([x, y, size](Random &, World &world) {
+        double threshold = 0.85 * size;
+        for (int i = -size; i < size; ++i) {
+            for (int j = -size; j < size; ++j) {
+                if (std::hypot(i, j) < threshold) {
+                    Tile &tile = world.getTile(x + i, y + j);
+                    if (tile.liquid == Liquid::water) {
+                        tile.liquid = Liquid::none;
+                    }
+                }
+            }
+        }
+    });
+}
+
+void genMeteorite(Random &rnd, World &world)
+{
+    if (world.conf.meteorites <= 0) {
+        return;
+    }
+    std::cout << "Bombarding surface\n";
+    rnd.shuffleNoise();
+    std::array avoidPoints{
+        world.getWidth() / 2,
+        world.surfaceEvilCenter,
+        computeDungeonCenter(world),
+    };
+    int buffer = 0.04 * world.getWidth();
+    for (int placed = 0, tries = 100 * world.conf.meteorites;
+         placed < world.conf.meteorites && tries > 0;
+         --tries) {
+        int x = rnd.getInt(375, world.getWidth() - 375);
+        for (int col : avoidPoints) {
+            if (std::abs(col - x) < buffer) {
+                x = -1;
+                break;
+            }
+        }
+        if (x == -1) {
+            continue;
+        }
+        int y = scanWhileEmpty({x, world.getSurfaceLevel(x)}, {0, 1}, world)
+                    .second +
+                rnd.getInt(-1, 5);
+        int numEmpty = 0;
+        if (y < world.getUndergroundLevel() &&
+            world.regionPasses(x - 15, y - 8, 30, 23, [&numEmpty](Tile &tile) {
+                if (emptyBlocks.contains(tile.blockID)) {
+                    ++numEmpty;
+                }
+                return numEmpty < 90;
+            })) {
+            placeMeteorite(x, y, rnd, world);
+            ++placed;
+        }
+    }
+}
+
+```
+
+#### File: `./src/biomes/Meteorite.h`
+```
+#ifndef METEORITE_H
+#define METEORITE_H
+
+class World;
+class Random;
+
+void genMeteorite(Random &rnd, World &world);
+
+#endif // METEORITE_H
+
+```
+
 #### File: `./src/biomes/Ocean.cpp`
 ```
 #include "Ocean.h"
 
+#include "Config.h"
 #include "Random.h"
 #include "World.h"
 #include "biomes/BiomeUtil.h"
@@ -8427,13 +8626,21 @@ void addOceanCave(int waterTable, Random &rnd, World &world)
         : centerOpt2 < world.jungleCenter + 0.11 * world.getWidth() + 220
             ? centerOpt1
             : rnd.select({centerOpt1, centerOpt2});
-    int maxY = (5 * world.getCavernLevel() + world.getUnderworldLevel()) / 6;
     int shuffleX = rnd.getInt(0, world.getWidth());
     int shuffleY = rnd.getInt(0, world.getHeight());
     std::vector<Point> locations;
     world.oceanCaveCenter = centerX;
+    int oceanFloor =
+        scanWhileEmpty({centerX - 90, waterTable}, {0, 1}, world).second;
+    int minY = scanWhileEmpty({centerX + 90, waterTable}, {0, 1}, world).second;
+    if (minY > oceanFloor) {
+        std::swap(minY, oceanFloor);
+    }
+    int maxY = std::min<int>(
+        oceanFloor + world.conf.oceanCaveSize * 0.2262 * world.getHeight(),
+        world.getUnderworldLevel() - 10);
     for (int x = centerX - 100; x < centerX + 100; ++x) {
-        for (int y = waterTable + 20; y < maxY; ++y) {
+        for (int y = minY; y < maxY; ++y) {
             double threshold =
                 std::max(std::abs(x - centerX), y + 100 - maxY) / 25.0 - 3;
             if (rnd.getFineNoise(x, y) < threshold - 0.5 ||
@@ -8463,7 +8670,7 @@ void addOceanCave(int waterTable, Random &rnd, World &world)
                 tile.blockID = TileID::empty;
                 tile.wallID = WallID::empty;
                 tile.liquid = Liquid::water;
-                if (y > world.getUndergroundLevel()) {
+                if (y > oceanFloor) {
                     locations.emplace_back(x, y);
                 }
             }
@@ -8511,7 +8718,8 @@ void genOceans(Random &rnd, World &world)
                          world.getSurfaceLevel(world.getWidth() - 300)) +
                      rnd.getInt(4, 12);
     for (int x = 0; x < 390; ++x) {
-        double drop = 90 * (1 - 1 / (1 + std::exp(0.041 * (200 - x))));
+        double drop = world.conf.oceanSize * 90 *
+                      (1 - 1 / (1 + std::exp(0.041 * (200 - x))));
         double sandDepth = (40 + 9 * rnd.getCoarseNoise(x, 0)) *
                            std::min(1.0, (400.0 - x) / 160);
         auto fillColumn = [&](int effectiveX) {
@@ -10456,7 +10664,7 @@ bool markIslandAt(int x, int y, int size, Random &rnd, World &world)
             [](Tile &tile) { return !tile.wireRed; })) {
         return false;
     }
-    double surfaceScale = rnd.getDouble(28, 35);
+    double surfaceScale = world.conf.surfaceAmplitude * rnd.getDouble(28, 35);
     double dropScale =
         size < 99 ? rnd.getDouble(18, 26) : rnd.getDouble(30, 42);
     for (int i = 0; i < size; ++i) {
@@ -10808,6 +11016,7 @@ enum {
     rainbowGun = 1260,
     lifeFruit = 1291,
     lihzahrdPowerCell = 1293,
+    picksaw = 1294,
     snowballCannon = 1319,
     ichorArrow = 1334,
     explodingBullet = 1351,
@@ -10859,6 +11068,7 @@ enum {
     solarTablet = 2767,
     brownAndSilverDye = 2877,
     vineRope = 2996,
+    wormholePotion = 2997,
     spelunkerGlowstick = 3002,
     boneTorch = 3004,
     crystalDart = 3009,
@@ -10880,6 +11090,10 @@ enum {
     richMahoganyLeafWand = 3361,
     boneThrowingKnife = 3379,
     happyGrenade = 3548,
+    theGrandDesign = 3611,
+    valhallaKnightsHelm = 3871,
+    valhallaKnightsBreastplate = 3872,
+    valhallaKnightsGreaves = 3873,
     duneriderBoots = 4055,
     ancientChisel = 4056,
     stormSpear = 4061,
@@ -10910,6 +11124,7 @@ enum {
     ladybugMinecart = 4427,
     sunflowerMinecart = 4429,
     demonicHellcart = 4443,
+    witchsBroom = 4444,
     shroomMinecart = 4450,
     miniNukeII = 4458,
     sandcastleBucket = 4460,
@@ -10935,6 +11150,7 @@ enum {
     potionOfReturn = 4870,
     hellfireTreads = 4874,
     tungstenBullet = 4915,
+    zenith = 4956,
     fledglingWings = 4978,
     moonLordLegs = 5001,
     deadMansSweater = 5007,
@@ -13128,6 +13344,10 @@ private:
                     }
                 }
                 tile.wallID = theme.brickWall;
+                if (tile.liquid == Liquid::water ||
+                    tile.liquid == Liquid::lava) {
+                    tile.liquid = Liquid::none;
+                }
             }
         }
     }
@@ -13246,7 +13466,7 @@ private:
             }
         }
         world.queuedDeco.emplace_back(
-            [x, y, mapWidth, mapHeight, scale](Random &, World &world) {
+            [x, y, mapWidth, mapHeight, scale](Random &rnd, World &world) {
                 parallelFor(
                     std::views::iota(0, mapWidth),
                     [x, y, mapHeight, scale, &world](int i) {
@@ -13262,6 +13482,31 @@ private:
                             }
                         }
                     });
+                if (world.conf.forTheWorthy) {
+                    std::vector<Tile> mapTiles;
+                    for (int j = 0; j < mapHeight; ++j) {
+                        for (int i = 0; i < mapWidth; ++i) {
+                            mapTiles.emplace_back(world.getTile(x + i, y + j));
+                        }
+                    }
+                    int chunk = rnd.getInt(mapWidth * 3, mapWidth * 5);
+                    for (size_t start = 0; start < mapTiles.size();
+                         start += chunk) {
+                        std::shuffle(
+                            mapTiles.begin() + start,
+                            mapTiles.begin() +
+                                std::min(start + chunk, mapTiles.size()),
+                            rnd.getPRNG());
+                    }
+                    for (int i = 0; i < mapWidth; ++i) {
+                        for (int j = 0; j < mapHeight; ++j) {
+                            if (rnd.getDouble(0, 1) < 0.15) {
+                                world.getTile(x + i, y + j) =
+                                    mapTiles[mapHeight + j * mapWidth];
+                            }
+                        }
+                    }
+                }
             });
     }
 
@@ -13345,13 +13590,14 @@ private:
 
     Point selectPlatformLocation(const std::vector<Point> &zones)
     {
-        while (true) {
+        for (int tries = 0; tries < 100; ++tries) {
             auto [x, y] = rnd.select(zones);
             if (isValidPlacementLocation(x, y, 1, roomSize, false)) {
                 y -= rnd.getInt(4, roomSize - 4);
                 return {x, y};
             }
         }
+        return {-1, -1};
     }
 
     void addPlatforms(const std::vector<Point> &zones)
@@ -13363,7 +13609,7 @@ private:
             world.getHeight() / 40;
         for (int i = 0; i < maxPlatforms; ++i) {
             auto [centerX, centerY] = selectPlatformLocation(zones);
-            if (usedRows.contains(centerY / 7)) {
+            if (centerX == -1 || usedRows.contains(centerY / 7)) {
                 continue;
             }
             usedRows.insert(centerY / 7);
@@ -13559,6 +13805,37 @@ private:
         }
     }
 
+    void addFloatingSpikes(int dungeonCenter, int dungeonWidth)
+    {
+        int numSpikes =
+            dungeonWidth * world.getHeight() / rnd.getInt(10080, 15120);
+        std::vector<Point> usedLocations;
+        for (int iter = 0; iter < numSpikes; ++iter) {
+            auto [x, y] = selectPaintingLocation(
+                dungeonCenter,
+                dungeonWidth,
+                7,
+                7,
+                40,
+                usedLocations);
+            if (x == -1) {
+                continue;
+            }
+            usedLocations.emplace_back(x, y);
+            x += 3;
+            y -= 5;
+            bool asCross = rnd.getBool();
+            for (int i = 0; i < 5; ++i) {
+                for (int j = 0; j < 5; ++j) {
+                    if (asCross ? i == 2 || j == 2
+                                : std::abs(i - 2) == std::abs(j - 2)) {
+                        world.getTile(x + i, y + j).blockID = TileID::spike;
+                    }
+                }
+            }
+        }
+    }
+
     void addDartTraps(const std::vector<Point> &locations)
     {
         int numTraps = (world.conf.traps > 1 ? 1 + world.conf.traps / 25
@@ -13606,8 +13883,11 @@ private:
     void addBoulderTraps(int dungeonCenter, int dungeonWidth)
     {
         int numBoulders =
-            world.conf.traps * dungeonWidth * world.getHeight() / 2222640;
-        if (numBoulders <= 0 || world.conf.traps < 2) {
+            (world.conf.forTheWorthy ? std::max(15.0, world.conf.traps)
+                                     : world.conf.traps) *
+            dungeonWidth * world.getHeight() / 2222640;
+        if (numBoulders <= 0 ||
+            (world.conf.traps < 2 && !world.conf.forTheWorthy)) {
             return;
         }
         std::vector<Point> locations;
@@ -13654,6 +13934,9 @@ private:
                 }
             }
         }
+        if (locations.empty()) {
+            return;
+        }
         addDartTraps(locations);
         for (auto [furnitureTile, lanternStyle] :
              {std::pair{TileID::alchemyTable, Variant::alchemy},
@@ -13661,7 +13944,9 @@ private:
               {TileID::boneWelder, Variant::bone}}) {
             int numPlacements = std::round(
                 rnd.getDouble(0.5, 3.2) + locations.size() / 2737.56);
-            while (numPlacements > 0) {
+            for (int tries = 500 * numPlacements;
+                 numPlacements > 0 && tries > 0;
+                 --tries) {
                 auto [x, y] = rnd.select(locations);
                 if (isValidPlacementLocation(x, y, 3, 3, true)) {
                     world.placeFramedTile(x, y - 2, furnitureTile);
@@ -13719,7 +14004,7 @@ private:
         int radius,
         const std::vector<Point> &usedLocations)
     {
-        while (true) {
+        for (int tries = 0; tries < 500; ++tries) {
             int x = rnd.getInt(
                 dungeonCenter - dungeonWidth,
                 dungeonCenter + dungeonWidth + 2 * roomSize);
@@ -13731,6 +14016,7 @@ private:
                 return {x, y};
             }
         }
+        return {-1, -1};
     }
 
     void addPaintings(int dungeonCenter, int dungeonWidth)
@@ -13778,8 +14064,10 @@ private:
                 height,
                 40,
                 usedLocations);
-            usedLocations.emplace_back(x, y);
-            world.placePainting(x + 2, y - height - 1, curPainting);
+            if (x != -1) {
+                usedLocations.emplace_back(x, y);
+                world.placePainting(x + 2, y - height - 1, curPainting);
+            }
         }
         numPaintings *= 2;
         for (int i = 0; i < numPaintings; ++i) {
@@ -13805,8 +14093,10 @@ private:
                 height,
                 25,
                 usedLocations);
-            usedLocations.emplace_back(x, y);
-            world.placePainting(x + 2, y - height - 1, curPainting);
+            if (x != -1) {
+                usedLocations.emplace_back(x, y);
+                world.placePainting(x + 2, y - height - 1, curPainting);
+            }
         }
     }
 
@@ -14197,9 +14487,8 @@ private:
                 applyPaintAt(x, y);
             }
         }
-        for (int x = dungeonCenter - dungeonWidth;
-             x < dungeonCenter + dungeonWidth + roomSize;
-             ++x) {
+        maxX = dungeonCenter + dungeonWidth + 2 * roomSize;
+        for (int x = dungeonCenter - dungeonWidth; x < maxX; ++x) {
             for (int y = yDivide; y < world.getHeight(); ++y) {
                 applyPaintAt(x, y);
             }
@@ -14311,6 +14600,9 @@ public:
         makeEntry();
         addPaintings(dungeonCenter, dungeonWidth);
         addFurniture(dungeonCenter, dungeonWidth);
+        if (world.conf.forTheWorthy) {
+            addFloatingSpikes(dungeonCenter, dungeonWidth);
+        }
         std::sort(
             zones.begin(),
             zones.end(),
@@ -14805,8 +15097,16 @@ std::pair<double, Item> getGlobalItemPotion(World &world)
         {ItemID::redPotion, Prefix::none, 1}};
 }
 
-Item getSurfacePrimaryLoot(Random &rnd)
+bool skipPrimaryLoot(Random &rnd, World &world)
 {
+    return world.conf.forTheWorthy && rnd.getDouble(0, 1) < 0.06;
+}
+
+Item getSurfacePrimaryLoot(Random &rnd, World &world)
+{
+    if (skipPrimaryLoot(rnd, world)) {
+        return {ItemID::angelStatue, Prefix::none, 1};
+    }
     return rnd.pool<Item>({
         {ItemID::spear, rnd.select(PrefixSet::universal), 1},
         {ItemID::blowpipe, rnd.select(PrefixSet::ranged), 1},
@@ -14821,8 +15121,11 @@ Item getSurfacePrimaryLoot(Random &rnd)
     });
 }
 
-Item getUndergroundPrimaryLoot(Random &rnd)
+Item getUndergroundPrimaryLoot(Random &rnd, World &world)
 {
+    if (skipPrimaryLoot(rnd, world)) {
+        return {ItemID::angelStatue, Prefix::none, 1};
+    }
     return rnd.pool<Item>({
         {ItemID::bandOfRegeneration, rnd.select(PrefixSet::accessory), 1},
         {ItemID::magicMirror, Prefix::none, 1},
@@ -14833,8 +15136,11 @@ Item getUndergroundPrimaryLoot(Random &rnd)
     });
 }
 
-Item getCavernPrimaryLoot(Random &rnd)
+Item getCavernPrimaryLoot(Random &rnd, World &world)
 {
+    if (skipPrimaryLoot(rnd, world)) {
+        return {ItemID::angelStatue, Prefix::none, 1};
+    }
     return rnd.pool<Item>({
         {ItemID::bandOfRegeneration, rnd.select(PrefixSet::accessory), 1},
         {ItemID::magicMirror, Prefix::none, 1},
@@ -14845,8 +15151,11 @@ Item getCavernPrimaryLoot(Random &rnd)
     });
 }
 
-Item getFrozenPrimaryLoot(Random &rnd)
+Item getFrozenPrimaryLoot(Random &rnd, World &world)
 {
+    if (skipPrimaryLoot(rnd, world)) {
+        return {ItemID::angelStatue, Prefix::none, 1};
+    }
     return rnd.pool<Item>({
         {ItemID::iceBoomerang, rnd.select(PrefixSet::universal), 1},
         {ItemID::iceBlade, rnd.select(PrefixSet::melee), 1},
@@ -14869,8 +15178,11 @@ Item getHoneyPrimaryLoot(Random &rnd)
         1};
 }
 
-Item getIvyPrimaryLoot(Random &rnd)
+Item getIvyPrimaryLoot(Random &rnd, World &world)
 {
+    if (skipPrimaryLoot(rnd, world)) {
+        return {ItemID::angelStatue, Prefix::none, 1};
+    }
     return rnd.pool<Item>({
         {ItemID::feralClaws, rnd.select(PrefixSet::accessory), 1},
         {ItemID::ankletOfTheWind, rnd.select(PrefixSet::accessory), 1},
@@ -14882,8 +15194,11 @@ Item getIvyPrimaryLoot(Random &rnd)
     });
 }
 
-Item getMushroomPrimaryLoot(Random &rnd)
+Item getMushroomPrimaryLoot(Random &rnd, World &world)
 {
+    if (skipPrimaryLoot(rnd, world)) {
+        return {ItemID::angelStatue, Prefix::none, 1};
+    }
     return rnd.pool<Item>({
         {ItemID::bandOfRegeneration, rnd.select(PrefixSet::accessory), 1},
         {ItemID::magicMirror, Prefix::none, 1},
@@ -14893,8 +15208,11 @@ Item getMushroomPrimaryLoot(Random &rnd)
     });
 }
 
-Item getWaterPrimaryLoot(Random &rnd)
+Item getWaterPrimaryLoot(Random &rnd, World &world)
 {
+    if (skipPrimaryLoot(rnd, world)) {
+        return {ItemID::angelStatue, Prefix::none, 1};
+    }
     return rnd.pool<Item>({
         {ItemID::breathingReed, rnd.select(PrefixSet::melee), 1},
         {ItemID::flipper, rnd.select(PrefixSet::accessory), 1},
@@ -14910,7 +15228,7 @@ void fillSurfaceChest(Chest &chest, int torchID, Random &rnd, World &world)
     fillLoot(
         chest,
         rnd,
-        {{1, getSurfacePrimaryLoot(rnd)},
+        {{1, getSurfacePrimaryLoot(rnd, world)},
          getGlobalItemPrimary(rnd, world),
          {1.0 / 6, {ItemID::glowstick, Prefix::none, rnd.getInt(40, 75)}},
          {1.0 / 6, {ItemID::throwingKnife, Prefix::none, rnd.getInt(150, 300)}},
@@ -14958,7 +15276,7 @@ void fillSurfaceAshWoodChest(Chest &chest, Random &rnd, World &world)
     fillLoot(
         chest,
         rnd,
-        {{1, getSurfacePrimaryLoot(rnd)},
+        {{1, getSurfacePrimaryLoot(rnd, world)},
          getGlobalItemPrimary(rnd, world),
          {1.0 / 6, {ItemID::glowstick, Prefix::none, rnd.getInt(40, 75)}},
          {1.0 / 6, {ItemID::throwingKnife, Prefix::none, rnd.getInt(150, 300)}},
@@ -15006,7 +15324,7 @@ void fillSurfaceFrozenChest(Chest &chest, Random &rnd, World &world)
     fillLoot(
         chest,
         rnd,
-        {{1, getFrozenPrimaryLoot(rnd)},
+        {{1, getFrozenPrimaryLoot(rnd, world)},
          getGlobalItemPrimary(rnd, world),
          {0.05, {ItemID::extractinator, Prefix::none, 1}},
          {0.02, {ItemID::fish, Prefix::none, 1}},
@@ -15061,18 +15379,28 @@ void fillSurfaceLivingWoodChest(Chest &chest, Random &rnd, World &world)
         chest,
         rnd,
         {{1,
-          rnd.pool<Item>({
-              {ItemID::livingWoodWand, Prefix::none, 1},
-              rnd.select<Item>({
-                  {ItemID::bugNet, Prefix::none, 1},
-                  {ItemID::greenString, rnd.select(PrefixSet::accessory), 1},
-                  {ItemID::brownAndSilverDye, Prefix::none, rnd.getInt(3, 6)},
-                  {ItemID::greenAndBlackDye, Prefix::none, rnd.getInt(3, 6)},
-                  {ItemID::wandOfSparking, rnd.select(PrefixSet::magic), 1},
-              }),
-              {ItemID::livingWoodWand, Prefix::none, 1},
-              {ItemID::finchStaff, rnd.select(PrefixSet::magic), 1},
-          })},
+          skipPrimaryLoot(rnd, world)
+              ? Item{ItemID::angelStatue, Prefix::none, 1}
+              : rnd.pool<Item>({
+                    {ItemID::livingWoodWand, Prefix::none, 1},
+                    rnd.select<Item>({
+                        {ItemID::bugNet, Prefix::none, 1},
+                        {ItemID::greenString,
+                         rnd.select(PrefixSet::accessory),
+                         1},
+                        {ItemID::brownAndSilverDye,
+                         Prefix::none,
+                         rnd.getInt(3, 6)},
+                        {ItemID::greenAndBlackDye,
+                         Prefix::none,
+                         rnd.getInt(3, 6)},
+                        {ItemID::wandOfSparking,
+                         rnd.select(PrefixSet::magic),
+                         1},
+                    }),
+                    {ItemID::livingWoodWand, Prefix::none, 1},
+                    {ItemID::finchStaff, rnd.select(PrefixSet::magic), 1},
+                })},
          getGlobalItemPrimary(rnd, world),
          {0.1,
           {rnd.select({ItemID::sunflowerMinecart, ItemID::ladybugMinecart}),
@@ -15125,17 +15453,23 @@ void fillSurfacePalmWoodChest(Chest &chest, Random &rnd, World &world)
         chest,
         rnd,
         {{1,
-          rnd.pool<Item>({
-              {ItemID::spear, rnd.select(PrefixSet::universal), 1},
-              {ItemID::blowpipe, rnd.select(PrefixSet::ranged), 1},
-              {ItemID::woodenBoomerang, rnd.select(PrefixSet::universal), 1},
-              {ItemID::aglet, rnd.select(PrefixSet::accessory), 1},
-              {ItemID::climbingClaws, rnd.select(PrefixSet::accessory), 1},
-              {ItemID::umbrella, rnd.select(PrefixSet::melee), 1},
-              {ItemID::wandOfSparking, rnd.select(PrefixSet::magic), 1},
-              {ItemID::radar, rnd.select(PrefixSet::accessory), 1},
-              {ItemID::stepStool, rnd.select(PrefixSet::accessory), 1},
-          })},
+          skipPrimaryLoot(rnd, world)
+              ? Item{ItemID::angelStatue, Prefix::none, 1}
+              : rnd.pool<Item>({
+                    {ItemID::spear, rnd.select(PrefixSet::universal), 1},
+                    {ItemID::blowpipe, rnd.select(PrefixSet::ranged), 1},
+                    {ItemID::woodenBoomerang,
+                     rnd.select(PrefixSet::universal),
+                     1},
+                    {ItemID::aglet, rnd.select(PrefixSet::accessory), 1},
+                    {ItemID::climbingClaws,
+                     rnd.select(PrefixSet::accessory),
+                     1},
+                    {ItemID::umbrella, rnd.select(PrefixSet::melee), 1},
+                    {ItemID::wandOfSparking, rnd.select(PrefixSet::magic), 1},
+                    {ItemID::radar, rnd.select(PrefixSet::accessory), 1},
+                    {ItemID::stepStool, rnd.select(PrefixSet::accessory), 1},
+                })},
          getGlobalItemPrimary(rnd, world),
          {0.05, {ItemID::whitePearl, Prefix::none, 1}},
          {1.0 / 6, {ItemID::glowstick, Prefix::none, rnd.getInt(40, 75)}},
@@ -15185,7 +15519,7 @@ void fillSurfacePearlwoodChest(Chest &chest, Random &rnd, World &world)
     fillLoot(
         chest,
         rnd,
-        {{1, getSurfacePrimaryLoot(rnd)},
+        {{1, getSurfacePrimaryLoot(rnd, world)},
          getGlobalItemPrimary(rnd, world),
          {1.0 / 6, {ItemID::bouncyGlowstick, Prefix::none, rnd.getInt(40, 75)}},
          {1.0 / 6, {ItemID::throwingKnife, Prefix::none, rnd.getInt(150, 300)}},
@@ -15233,7 +15567,7 @@ void fillSurfaceRichMahoganyChest(Chest &chest, Random &rnd, World &world)
     fillLoot(
         chest,
         rnd,
-        {{1, getSurfacePrimaryLoot(rnd)},
+        {{1, getSurfacePrimaryLoot(rnd, world)},
          getGlobalItemPrimary(rnd, world),
          {1.0 / 6, {ItemID::glowstick, Prefix::none, rnd.getInt(40, 75)}},
          {1.0 / 6, {ItemID::poisonedKnife, Prefix::none, rnd.getInt(150, 300)}},
@@ -15283,7 +15617,7 @@ void fillSurfaceWaterChest(Chest &chest, Random &rnd, World &world)
     fillLoot(
         chest,
         rnd,
-        {{1, getWaterPrimaryLoot(rnd)},
+        {{1, getWaterPrimaryLoot(rnd, world)},
          getGlobalItemPrimary(rnd, world),
          {nearEdge ? 0.05 : 0, {ItemID::whitePearl, Prefix::none, 1}},
          {0.5, {ItemID::sandcastleBucket, Prefix::none, 1}},
@@ -15343,7 +15677,7 @@ void fillUndergroundChest(
         chest,
         rnd,
         {
-            {1, getUndergroundPrimaryLoot(rnd)},
+            {1, getUndergroundPrimaryLoot(rnd, world)},
             getGlobalItemPrimary(rnd, world),
             {isTrapped ? 1.0 / 3 : 0,
              {ItemID::deadMansSweater, Prefix::none, 1}},
@@ -15393,7 +15727,7 @@ void fillUndergroundFrozenChest(Chest &chest, Random &rnd, World &world)
         chest,
         rnd,
         {
-            {1, getFrozenPrimaryLoot(rnd)},
+            {1, getFrozenPrimaryLoot(rnd, world)},
             getGlobalItemPrimary(rnd, world),
             {0.05, {ItemID::extractinator, Prefix::none, 1}},
             {0.02, {ItemID::fish, Prefix::none, 1}},
@@ -15494,7 +15828,7 @@ void fillUndergroundIvyChest(Chest &chest, Random &rnd, World &world)
         chest,
         rnd,
         {
-            {1, getIvyPrimaryLoot(rnd)},
+            {1, getIvyPrimaryLoot(rnd, world)},
             getGlobalItemPrimary(rnd, world),
             {1.0 / 6, {ItemID::livingMahoganyWand, Prefix::none, 1}},
             {0.1, {ItemID::beeMinecart, Prefix::none, 1}},
@@ -15546,7 +15880,7 @@ void fillUndergroundMushroomChest(Chest &chest, Random &rnd, World &world)
         chest,
         rnd,
         {
-            {1, getMushroomPrimaryLoot(rnd)},
+            {1, getMushroomPrimaryLoot(rnd, world)},
             {1,
              {rnd.pool({ItemID::shroomMinecart, ItemID::mushroomHat}),
               Prefix::none,
@@ -15598,7 +15932,7 @@ void fillUndergroundPearlwoodChest(Chest &chest, Random &rnd, World &world)
         chest,
         rnd,
         {
-            {1, getUndergroundPrimaryLoot(rnd)},
+            {1, getUndergroundPrimaryLoot(rnd, world)},
             getGlobalItemPrimary(rnd, world),
             {0.05, {ItemID::extractinator, Prefix::none, 1}},
             {0.05, {ItemID::flareGun, Prefix::none, 1}},
@@ -15647,12 +15981,18 @@ void fillUndergroundSandstoneChest(Chest &chest, Random &rnd, World &world)
         rnd,
         {
             {1,
-             rnd.pool<Item>({
-                 {ItemID::magicConch, Prefix::none, 1},
-                 {ItemID::snakeCharmersFlute, Prefix::none, 1},
-                 {ItemID::ancientChisel, rnd.select(PrefixSet::accessory), 1},
-                 {ItemID::duneriderBoots, rnd.select(PrefixSet::accessory), 1},
-             })},
+             skipPrimaryLoot(rnd, world)
+                 ? Item{ItemID::angelStatue, Prefix::none, 1}
+                 : rnd.pool<Item>({
+                       {ItemID::magicConch, Prefix::none, 1},
+                       {ItemID::snakeCharmersFlute, Prefix::none, 1},
+                       {ItemID::ancientChisel,
+                        rnd.select(PrefixSet::accessory),
+                        1},
+                       {ItemID::duneriderBoots,
+                        rnd.select(PrefixSet::accessory),
+                        1},
+                   })},
             getGlobalItemPrimary(rnd, world),
             {0.05,
              {rnd.select({ItemID::whitePearl, ItemID::blackPearl}),
@@ -15706,7 +16046,7 @@ void fillUndergroundRichMahoganyChest(Chest &chest, Random &rnd, World &world)
         chest,
         rnd,
         {
-            {1, getUndergroundPrimaryLoot(rnd)},
+            {1, getUndergroundPrimaryLoot(rnd, world)},
             getGlobalItemPrimary(rnd, world),
             {0.05, {ItemID::extractinator, Prefix::none, 1}},
             {0.05, {ItemID::flareGun, Prefix::none, 1}},
@@ -15756,7 +16096,7 @@ void fillUndergroundWaterChest(Chest &chest, Random &rnd, World &world)
         chest,
         rnd,
         {
-            {1, getWaterPrimaryLoot(rnd)},
+            {1, getWaterPrimaryLoot(rnd, world)},
             getGlobalItemPrimary(rnd, world),
             {nearEdge ? 0.6 : 0,
              {rnd.select({ItemID::whitePearl, ItemID::blackPearl}),
@@ -15820,7 +16160,7 @@ void fillCavernChest(
         chest,
         rnd,
         {
-            {1, getCavernPrimaryLoot(rnd)},
+            {1, getCavernPrimaryLoot(rnd, world)},
             getGlobalItemPrimary(rnd, world),
             {isTrapped ? 1.0 / 3 : 0,
              {ItemID::deadMansSweater, Prefix::none, 1}},
@@ -15881,7 +16221,7 @@ void fillCavernFrozenChest(Chest &chest, Random &rnd, World &world)
         chest,
         rnd,
         {
-            {1, getFrozenPrimaryLoot(rnd)},
+            {1, getFrozenPrimaryLoot(rnd, world)},
             getGlobalItemPrimary(rnd, world),
             {0.05, {ItemID::extractinator, Prefix::none, 1}},
             {0.02, {ItemID::fish, Prefix::none, 1}},
@@ -16006,7 +16346,7 @@ void fillCavernIvyChest(Chest &chest, Random &rnd, World &world)
         chest,
         rnd,
         {
-            {1, getIvyPrimaryLoot(rnd)},
+            {1, getIvyPrimaryLoot(rnd, world)},
             getGlobalItemPrimary(rnd, world),
             {1.0 / 6, {ItemID::livingMahoganyWand, Prefix::none, 1}},
             {0.1, {ItemID::beeMinecart, Prefix::none, 1}},
@@ -16072,7 +16412,7 @@ void fillCavernMushroomChest(Chest &chest, Random &rnd, World &world)
         chest,
         rnd,
         {
-            {1, getMushroomPrimaryLoot(rnd)},
+            {1, getMushroomPrimaryLoot(rnd, world)},
             {1,
              {rnd.pool({ItemID::shroomMinecart, ItemID::mushroomHat}),
               Prefix::none,
@@ -16137,7 +16477,7 @@ void fillCavernPearlwoodChest(Chest &chest, Random &rnd, World &world)
         chest,
         rnd,
         {
-            {1, getCavernPrimaryLoot(rnd)},
+            {1, getCavernPrimaryLoot(rnd, world)},
             getGlobalItemPrimary(rnd, world),
             {chest.y < lavaLevel ? 0.05 : 0.15,
              {chest.y < lavaLevel ? ItemID::extractinator : ItemID::lavaCharm,
@@ -16199,11 +16539,15 @@ void fillCavernSandstoneChest(Chest &chest, Random &rnd, World &world)
         rnd,
         {
             {1,
-             rnd.pool<Item>({
-                 {ItemID::stormSpear, rnd.select(PrefixSet::universal), 1},
-                 {ItemID::thunderZapper, rnd.select(PrefixSet::magic), 1},
-                 {ItemID::bastStatue, Prefix::none, 1},
-             })},
+             skipPrimaryLoot(rnd, world)
+                 ? Item{ItemID::angelStatue, Prefix::none, 1}
+                 : rnd.pool<Item>({
+                       {ItemID::stormSpear,
+                        rnd.select(PrefixSet::universal),
+                        1},
+                       {ItemID::thunderZapper, rnd.select(PrefixSet::magic), 1},
+                       {ItemID::bastStatue, Prefix::none, 1},
+                   })},
             getGlobalItemPrimary(rnd, world),
             {0.05,
              {rnd.select({ItemID::blackPearl, ItemID::pinkPearl}),
@@ -16270,7 +16614,7 @@ void fillCavernRichMahoganyChest(Chest &chest, Random &rnd, World &world)
         chest,
         rnd,
         {
-            {1, getCavernPrimaryLoot(rnd)},
+            {1, getCavernPrimaryLoot(rnd, world)},
             getGlobalItemPrimary(rnd, world),
             {chest.y < lavaLevel ? 0.05 : 0.15,
              {chest.y < lavaLevel ? ItemID::extractinator : ItemID::lavaCharm,
@@ -16334,7 +16678,7 @@ void fillCavernWaterChest(Chest &chest, Random &rnd, World &world)
         chest,
         rnd,
         {
-            {1, getWaterPrimaryLoot(rnd)},
+            {1, getWaterPrimaryLoot(rnd, world)},
             getGlobalItemPrimary(rnd, world),
             {nearEdge ? 0.7 : 0,
              {rnd.select({ItemID::whitePearl, ItemID::blackPearl}),
@@ -16399,12 +16743,20 @@ void fillSkywareChest(Chest &chest, Random &rnd, World &world)
         chest,
         rnd,
         {{1,
-          rnd.pool<Item>({
-              {ItemID::shinyRedBalloon, rnd.select(PrefixSet::accessory), 1},
-              {ItemID::starfury, rnd.select(PrefixSet::melee), 1},
-              {ItemID::luckyHorseshoe, rnd.select(PrefixSet::accessory), 1},
-              {ItemID::celestialMagnet, rnd.select(PrefixSet::accessory), 1},
-          })},
+          skipPrimaryLoot(rnd, world)
+              ? Item{ItemID::angelStatue, Prefix::none, 1}
+              : rnd.pool<Item>({
+                    {ItemID::shinyRedBalloon,
+                     rnd.select(PrefixSet::accessory),
+                     1},
+                    {ItemID::starfury, rnd.select(PrefixSet::melee), 1},
+                    {ItemID::luckyHorseshoe,
+                     rnd.select(PrefixSet::accessory),
+                     1},
+                    {ItemID::celestialMagnet,
+                     rnd.select(PrefixSet::accessory),
+                     1},
+                })},
          getGlobalItemPrimary(rnd, world),
          {1.0 / 3, {ItemID::skyMill, Prefix::none, 1}},
          {0.025, {ItemID::fledglingWings, rnd.select(PrefixSet::accessory), 1}},
@@ -16459,13 +16811,15 @@ void fillShadowChest(Chest &chest, Random &rnd, World &world)
         rnd,
         {
             {1,
-             rnd.pool<Item>({
-                 {ItemID::sunfury, rnd.select(PrefixSet::universal), 1},
-                 {ItemID::flowerOfFire, rnd.select(PrefixSet::magic), 1},
-                 {ItemID::flamelash, rnd.select(PrefixSet::magic), 1},
-                 {ItemID::darkLance, rnd.select(PrefixSet::universal), 1},
-                 {ItemID::hellwingBow, rnd.select(PrefixSet::ranged), 1},
-             })},
+             skipPrimaryLoot(rnd, world)
+                 ? Item{ItemID::angelStatue, Prefix::none, 1}
+                 : rnd.pool<Item>({
+                       {ItemID::sunfury, rnd.select(PrefixSet::universal), 1},
+                       {ItemID::flowerOfFire, rnd.select(PrefixSet::magic), 1},
+                       {ItemID::flamelash, rnd.select(PrefixSet::magic), 1},
+                       {ItemID::darkLance, rnd.select(PrefixSet::universal), 1},
+                       {ItemID::hellwingBow, rnd.select(PrefixSet::ranged), 1},
+                   })},
             getGlobalItemPrimary(rnd, world),
             {0.1, {ItemID::demonicHellcart, Prefix::none, 1}},
             {0.1, {ItemID::ornateShadowKey, Prefix::none, 1}},
@@ -16586,7 +16940,11 @@ void fillWebCoveredChest(Chest &chest, Random &rnd, World &world)
         chest,
         rnd,
         {
-            {1, {ItemID::webSlinger, Prefix::none, 1}},
+            {1,
+             {skipPrimaryLoot(rnd, world) ? ItemID::angelStatue
+                                          : ItemID::webSlinger,
+              Prefix::none,
+              1}},
             getGlobalItemPrimary(rnd, world),
             {1, {ItemID::cobweb, Prefix::none, rnd.getInt(10, 29)}},
             {0.05, {ItemID::extractinator, Prefix::none, 1}},
@@ -16972,6 +17330,36 @@ void fillStarterChestMythril(Chest &chest, Random &rnd, World &world)
     }
 }
 
+void fillStarterChestDebug(Chest &chest, Random &rnd, World &world)
+{
+    fillLoot(
+        chest,
+        rnd,
+        {
+            {1, {ItemID::zenith, Prefix::legendary, 1}},
+            {1, {ItemID::zenith, Prefix::legendary, 1}},
+            {1, {ItemID::picksaw, Prefix::legendary, 1}},
+            {1, {ItemID::picksaw, Prefix::legendary, 1}},
+            {1, {ItemID::valhallaKnightsHelm, Prefix::none, 1}},
+            {1, {ItemID::valhallaKnightsBreastplate, Prefix::none, 1}},
+            {1, {ItemID::valhallaKnightsGreaves, Prefix::none, 1}},
+            {1, {ItemID::valhallaKnightsHelm, Prefix::none, 1}},
+            {1, {ItemID::valhallaKnightsBreastplate, Prefix::none, 1}},
+            {1, {ItemID::valhallaKnightsGreaves, Prefix::none, 1}},
+            {1, {ItemID::witchsBroom, Prefix::none, 1}},
+            {1, {ItemID::witchsBroom, Prefix::none, 1}},
+            {1, {ItemID::theGrandDesign, Prefix::none, 1}},
+            {1, {ItemID::theGrandDesign, Prefix::none, 1}},
+            {1,
+             {world.ironVariant == TileID::ironOre ? ItemID::ironBar
+                                                   : ItemID::leadBar,
+              Prefix::none,
+              9999}},
+            {1, {ItemID::shinePotion, Prefix::none, 9999}},
+            {1, {ItemID::wormholePotion, Prefix::none, 9999}},
+        });
+}
+
 void fillStarterChest(int level, Chest &chest, Random &rnd, World &world)
 {
     switch (level) {
@@ -16986,6 +17374,9 @@ void fillStarterChest(int level, Chest &chest, Random &rnd, World &world)
         break;
     case ItemID::mythrilBar:
         fillStarterChestMythril(chest, rnd, world);
+        break;
+    case ItemID::zenith:
+        fillStarterChestDebug(chest, rnd, world);
         break;
     }
 }
@@ -19076,7 +19467,10 @@ void genPyramid(Random &rnd, World &world)
         return;
     }
     constexpr auto avoidTiles = frozen::make_set<int>(
-        {TileID::blueBrick, TileID::greenBrick, TileID::pinkBrick});
+        {TileID::blueBrick,
+         TileID::greenBrick,
+         TileID::pinkBrick,
+         TileID::meteorite});
     while (std::abs(x - world.surfaceEvilCenter) < 1.5 * size ||
            std::abs(x - world.getWidth() / 2) < 2 * size ||
            !world.regionPasses(
@@ -21041,6 +21435,10 @@ Point selectTempleCenter(Random &rnd, World &world)
                          world.jungleCenter +
                              world.conf.jungleSize * 0.079 * world.getWidth(),
                          world.getWidth() - 350);
+    if (maxX < minX) {
+        minX = std::midpoint(minX, maxX);
+        maxX = minX + 1;
+    }
     int minY = (world.getUndergroundLevel() + world.getCavernLevel()) / 2;
     for (int numTries = 0; numTries < 1000; ++numTries) {
         int x = rnd.getInt(minX, maxX);
@@ -22147,13 +22545,15 @@ void placeLavaTraps(Random &rnd, World &world)
             }
         }
     }
+    if (locations.empty()) {
+        return;
+    }
     std::vector<Point> usedLocations;
     double numLavaTraps = world.conf.traps * world.getWidth() *
                           world.getHeight() / rnd.getInt(164000, 230400);
-    while (numLavaTraps > 0) {
+    for (; numLavaTraps > 0; numLavaTraps -= 0.1) {
         auto [x, y] = rnd.select(locations);
         if (isLocationUsed(x, y, 15, usedLocations)) {
-            numLavaTraps -= 0.1;
             continue;
         }
         int gapJ = 0;
@@ -22205,7 +22605,7 @@ void placeLavaTraps(Random &rnd, World &world)
         auto [plateX, plateY] = rnd.select(plateLocs);
         placePressurePlate(plateX, plateY, true, world);
         placeWire({x, y + gapJ}, {plateX, plateY}, Wire::red, world);
-        --numLavaTraps;
+        numLavaTraps -= 0.9;
     }
 }
 
@@ -22587,6 +22987,7 @@ inline constexpr auto placementAvoidTiles = frozen::make_set<int>({
     TileID::thinIce,
     TileID::spike,
     TileID::woodenSpike,
+    TileID::meteorite,
 });
 
 bool isPlacementCandidate(int x, int y, World &world)
@@ -22998,7 +23399,8 @@ void placeOrbHearts(
     if (world.conf.doubleTrouble) {
         orbHeartCount *= 2;
     }
-    while (orbHeartCount > 0) {
+    for (int tries = 500 * orbHeartCount; orbHeartCount > 0 && tries > 0;
+         --tries) {
         int binId = rnd.getInt(0, maxBin);
         if (locations[binId].empty()) {
             continue;
