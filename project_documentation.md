@@ -179,6 +179,23 @@ maintaining normal world progression.
 │   │   │   ├── Hallow.h
 │   │   │   ├── HmOres.cpp
 │   │   │   └── HmOres.h
+│   │   ├── hiveQueen
+│   │   │   ├── Aether.cpp
+│   │   │   ├── Aether.h
+│   │   │   ├── AsteroidField.cpp
+│   │   │   ├── AsteroidField.h
+│   │   │   ├── Base.cpp
+│   │   │   ├── Base.h
+│   │   │   ├── GlowingMoss.cpp
+│   │   │   ├── GlowingMoss.h
+│   │   │   ├── GlowingMushroom.cpp
+│   │   │   ├── GlowingMushroom.h
+│   │   │   ├── GraniteCave.cpp
+│   │   │   ├── GraniteCave.h
+│   │   │   ├── Hive.cpp
+│   │   │   ├── Hive.h
+│   │   │   ├── MarbleCave.cpp
+│   │   │   └── MarbleCave.h
 │   │   ├── patches
 │   │   │   ├── Base.cpp
 │   │   │   ├── Base.h
@@ -296,6 +313,9 @@ maintaining normal world progression.
 │   │   ├── hardmode
 │   │   │   ├── LootRules.cpp
 │   │   │   └── LootRules.h
+│   │   ├── hiveQueen
+│   │   │   ├── Temple.cpp
+│   │   │   └── Temple.h
 │   │   └── sunken
 │   │       ├── Flood.cpp
 │   │       └── Flood.h
@@ -322,7 +342,7 @@ maintaining normal world progression.
 └── util
     └── importStructure.py
 
-18 directories, 209 files
+20 directories, 227 files
 ```
 
 ## 4. Source Files
@@ -374,10 +394,12 @@ CXXFLAGS := -Wall -Wextra -pedantic -Werror -std=c++20 -O2 -msse4.1 -mpclmul
 SRCS := $(wildcard src/*.cpp) $(wildcard src/biomes/*.cpp) \
     $(wildcard src/biomes/doubleTrouble/*.cpp) \
     $(wildcard src/biomes/hardmode/*.cpp) \
+    $(wildcard src/biomes/hiveQueen/*.cpp) \
     $(wildcard src/biomes/patches/*.cpp) \
     $(wildcard src/biomes/shattered/*.cpp) \
     $(wildcard src/map/*.cpp) $(wildcard src/structures/*.cpp) \
     $(wildcard src/structures/hardmode/*.cpp) \
+    $(wildcard src/structures/hiveQueen/*.cpp) \
     $(wildcard src/structures/sunken/*.cpp) \
     $(wildcard src/structures/data/*.cpp) $(wildcard src/vendor/*.c) \
     $(wildcard src/vendor/*.cpp)
@@ -991,6 +1013,9 @@ patchesTemperature = 0.0
 # How rapidly to transition biomes for biome patches.
 patchesSize = 1.0
 
+# Activates "not the bees" secret seed.
+hiveQueen = false
+
 # Activates "for the worthy" secret seed.
 forTheWorthy = false
 
@@ -1476,6 +1501,7 @@ Config readConfig(Random &rnd)
         0.0,   // patchesHumidity
         0.0,   // patchesTemperature
         1.0,   // patchesSize
+        false, // hiveQueen
         false, // forTheWorthy
         0,     // meteorites
         1.0,   // meteoriteSize
@@ -1547,6 +1573,7 @@ Config readConfig(Random &rnd)
     READ_CONF_VALUE(variation, patchesHumidity, Real);
     READ_CONF_VALUE(variation, patchesTemperature, Real);
     READ_CONF_AREA_VALUE(variation, patchesSize);
+    READ_CONF_VALUE(variation, hiveQueen, Boolean);
     READ_CONF_VALUE(variation, forTheWorthy, Boolean);
     READ_CONF_VALUE(variation, meteorites, Integer);
     READ_CONF_AREA_VALUE(variation, meteoriteSize);
@@ -1623,6 +1650,7 @@ struct Config {
     double patchesHumidity;
     double patchesTemperature;
     double patchesSize;
+    bool hiveQueen;
     bool forTheWorthy;
     int meteorites;
     double meteoriteSize;
@@ -1707,6 +1735,14 @@ Config readConfig(Random &rnd);
 #include "biomes/doubleTrouble/ResourceSwap.h"
 #include "biomes/hardmode/Hallow.h"
 #include "biomes/hardmode/HmOres.h"
+#include "biomes/hiveQueen/Aether.h"
+#include "biomes/hiveQueen/AsteroidField.h"
+#include "biomes/hiveQueen/Base.h"
+#include "biomes/hiveQueen/GlowingMoss.h"
+#include "biomes/hiveQueen/GlowingMushroom.h"
+#include "biomes/hiveQueen/GraniteCave.h"
+#include "biomes/hiveQueen/Hive.h"
+#include "biomes/hiveQueen/MarbleCave.h"
 #include "biomes/patches/Base.h"
 #include "biomes/patches/Cloud.h"
 #include "biomes/patches/Hive.h"
@@ -1731,6 +1767,7 @@ Config readConfig(Random &rnd);
 #include "structures/Treasure.h"
 #include "structures/Vines.h"
 #include "structures/hardmode/LootRules.h"
+#include "structures/hiveQueen/Temple.h"
 #include "structures/sunken/Flood.h"
 #include <ranges>
 #include <set>
@@ -1801,6 +1838,16 @@ enum class Step {
     genCloudPatches,
     genJunglePatches,
     genHivePatches,
+    // Hive queen.
+    genWorldBaseHiveQueen,
+    genMarbleCaveHiveQueen,
+    genGlowingMushroomHiveQueen,
+    genGraniteCaveHiveQueen,
+    genHiveHiveQueen,
+    genAetherHiveQueen,
+    genAsteroidFieldHiveQueen,
+    genGlowingMossHiveQueen,
+    genTempleHiveQueen,
 };
 
 inline std::array baseBiomeRules{
@@ -1838,14 +1885,14 @@ inline std::array baseBiomeRules{
 };
 
 inline std::array baseStructureRules{
-    Step::genDungeon,     Step::genTemple,      Step::genPyramid,
-    Step::genDesertTomb,  Step::genBuriedBoat,  Step::genSpiderHall,
-    Step::genRuins,       Step::genTorchArena,  Step::genLake,
-    Step::genStarterHome, Step::genIgloo,       Step::genMushroomCabin,
-    Step::genOceanWreck,  Step::genTreasure,    Step::applyHardmodeLoot,
-    Step::genPlants,      Step::genTraps,       Step::genTracks,
-    Step::genFlood,       Step::smoothSurfaces, Step::finalizeWalls,
-    Step::genVines,       Step::genGrasses,
+    Step::genDungeon,        Step::genTemple,        Step::genTempleHiveQueen,
+    Step::genPyramid,        Step::genDesertTomb,    Step::genBuriedBoat,
+    Step::genSpiderHall,     Step::genRuins,         Step::genTorchArena,
+    Step::genOceanWreck,     Step::genLake,          Step::genStarterHome,
+    Step::genIgloo,          Step::genMushroomCabin, Step::genTreasure,
+    Step::applyHardmodeLoot, Step::genPlants,        Step::genTraps,
+    Step::genTracks,         Step::genFlood,         Step::smoothSurfaces,
+    Step::finalizeWalls,     Step::genVines,         Step::genGrasses,
 };
 
 inline std::array patchesBiomeRules{
@@ -1878,6 +1925,37 @@ inline std::array patchesBiomeRules{
     Step::genSpiderNest,
     Step::genGlowingMoss,
     Step::genGemGrove,
+};
+
+inline std::array hiveQueenBiomeRules{
+    Step::planBiomes,
+    Step::initNoise,
+    Step::initBiomeNoise,
+    Step::genWorldBaseHiveQueen,
+    Step::genOceans,
+    Step::genShatteredLand,
+    Step::genCloudPatches,
+    Step::genMarbleCaveHiveQueen,
+    Step::genJunglePatches,
+    Step::genForest,
+    Step::genUnderworld,
+    Step::genGlowingMushroomHiveQueen,
+    Step::genGraniteCaveHiveQueen,
+    Step::genHiveHiveQueen,
+    Step::genAetherHiveQueen,
+    Step::genCrimson,
+    Step::genCorruption,
+    Step::genSecondaryCrimson,
+    Step::genSecondaryCorruption,
+    Step::applyQueuedEvil,
+    Step::genMeteorite,
+    Step::genHardmodeOres,
+    Step::genHallow,
+    Step::swapResources,
+    Step::genAsteroidFieldHiveQueen,
+    Step::genGemCave,
+    Step::genSpiderNest,
+    Step::genGlowingMossHiveQueen,
 };
 
 #define GEN_STEP(step)                                                         \
@@ -1965,12 +2043,22 @@ void doGenStep(Step step, LocationBins &locations, Random &rnd, World &world)
         rnd.initBiomeNoise(
             0.00097 / world.conf.patchesSize,
             world.conf.patchesHumidity,
-            world.conf.patchesTemperature);
+            world.conf.patchesTemperature,
+            world.conf.hiveQueen);
         break;
         GEN_STEP(genWorldBasePatches)
         GEN_STEP(genCloudPatches)
         GEN_STEP(genJunglePatches)
         GEN_STEP(genHivePatches)
+        GEN_STEP(genWorldBaseHiveQueen)
+        GEN_STEP(genMarbleCaveHiveQueen)
+        GEN_STEP(genGlowingMushroomHiveQueen)
+        GEN_STEP(genGraniteCaveHiveQueen)
+        GEN_STEP(genHiveHiveQueen)
+        GEN_STEP(genAetherHiveQueen)
+        GEN_STEP(genAsteroidFieldHiveQueen)
+        GEN_STEP(genGlowingMossHiveQueen)
+        GEN_STEP(genTempleHiveQueen)
     }
 }
 
@@ -2012,9 +2100,19 @@ void doWorldGen(Random &rnd, World &world)
     if (!world.conf.hardmodeLoot) {
         excludes.insert(Step::applyHardmodeLoot);
     }
+    excludes.insert(
+        world.conf.hiveQueen ? Step::genTemple : Step::genTempleHiveQueen);
     LocationBins locations;
     std::vector<Step> steps;
-    if (world.conf.patches) {
+    if (world.conf.hiveQueen) {
+        steps.insert(
+            steps.end(),
+            hiveQueenBiomeRules.begin(),
+            hiveQueenBiomeRules.end());
+        if (!world.conf.patches) {
+            excludes.insert(Step::initBiomeNoise);
+        }
+    } else if (world.conf.patches) {
         steps.insert(
             steps.end(),
             patchesBiomeRules.begin(),
@@ -2072,6 +2170,7 @@ public:
 
 #include "Util.h"
 #include "vendor/OpenSimplexNoise.hpp"
+#include <algorithm>
 #include <iostream>
 #include <numbers>
 
@@ -2168,7 +2267,8 @@ void Random::computeBlurNoise()
 void Random::initBiomeNoise(
     double scale,
     double humidityOffset,
-    double temperatureOffset)
+    double temperatureOffset,
+    bool hiveQueen)
 {
     std::cout << "Measuring weather\n";
     humidity.resize(noiseWidth * noiseHeight);
@@ -2179,21 +2279,33 @@ void Random::initBiomeNoise(
     OpenSimplexNoise noise{dist(rnd)};
     parallelFor(
         std::views::iota(0, noiseWidth),
-        [scale, humidityOffset, temperatureOffset, &noise, this](int x) {
+        [scale, humidityOffset, temperatureOffset, hiveQueen, &noise, this](
+            int x) {
             double offset = scale * (noiseWidth + noiseHeight);
             double xS = 1.4 * scale * x;
             for (int y = 0; y < noiseHeight; ++y) {
                 double yS = scale * y;
-                humidity[x * noiseHeight + y] =
-                    noise.Evaluate(xS, yS) +
-                    0.5 * noise.Evaluate(2 * xS, 2 * yS) +
-                    0.25 * noise.Evaluate(4 * xS, 4 * yS) + humidityOffset;
-                temperature[x * noiseHeight + y] =
+                int index = x * noiseHeight + y;
+                humidity[index] = noise.Evaluate(xS, yS) +
+                                  0.5 * noise.Evaluate(2 * xS, 2 * yS) +
+                                  0.25 * noise.Evaluate(4 * xS, 4 * yS) +
+                                  humidityOffset;
+                temperature[index] =
                     noise.Evaluate(offset + xS, offset + yS) +
                     0.5 * noise.Evaluate(offset + 2 * xS, offset + 2 * yS) +
                     0.25 * noise.Evaluate(offset + 4 * xS, offset + 4 * yS) +
                     std::max(0.01 * (y + 355 - noiseHeight), 0.0) +
                     temperatureOffset;
+                if (hiveQueen) {
+                    double jungleBoost = std::clamp(
+                        0.7 - 2.4 * std::abs(x - 0.5 * noiseWidth) / noiseWidth,
+                        0.0,
+                        0.5);
+                    humidity[index] =
+                        std::lerp(humidity[index], 0.82, jungleBoost);
+                    temperature[index] =
+                        std::lerp(temperature[index], 0.82, jungleBoost);
+                }
             }
         });
 }
@@ -2355,7 +2467,8 @@ public:
     void initBiomeNoise(
         double scale,
         double humidityOffset,
-        double temperatureOffset);
+        double temperatureOffset,
+        bool hiveQueen);
     /**
      * Shift cached noise samples, effectively producing new noise samples,
      * cheaply.
@@ -2485,6 +2598,7 @@ public:
      * changes.
      */
     bool guarded : 1;
+    short int flag;
 
     bool operator==(const Tile &) const = default;
 };
@@ -3396,9 +3510,13 @@ void World::planBiomes(Random &rnd)
     std::cout << "Planning biomes\n";
     for (int tries = 0; tries < 1000; ++tries) {
         desertCenter = rnd.getDouble(0.09, 0.91);
-        jungleCenter = rnd.getDouble(0.12, 0.39);
-        if (rnd.getBool()) {
-            jungleCenter = 1 - jungleCenter;
+        if (conf.hiveQueen) {
+            jungleCenter = rnd.getDouble(0.39, 0.61);
+        } else {
+            jungleCenter = rnd.getDouble(0.12, 0.39);
+            if (rnd.getBool()) {
+                jungleCenter = 1 - jungleCenter;
+            }
         }
         snowCenter = rnd.getDouble(0.12, 0.88);
 
@@ -3778,6 +3896,8 @@ Seed determineSeed(Config &conf)
 {
     if (conf.forTheWorthy) {
         return Seed::forTheWorthy;
+    } else if (conf.hiveQueen) {
+        return Seed::notTheBees;
     } else if (conf.doubleTrouble) {
         return Seed::drunkWorld;
     } else if (conf.traps > 14) {
@@ -4109,6 +4229,14 @@ void saveWorldFile(Config &conf, Random &rnd, World &world)
              "Dolgen", "Dolgrim", "Duerthen", "Durim",   "Fikod",  "Garval",
              "Gimli",  "Gimut",   "Jarut",    "Morthal", "Norkas", "Norsun",
              "Oten",   "Ovbere",  "Tordak",   "Urist"})); // NPC name.
+    } else if (special == Seed::notTheBees) {
+        w.putUint32(17); // Merchant.
+        w.putString(
+            rnd.select({"Alfred",   "Barney", "Calvin",    "Edmund",   "Edwin",
+                        "Eugene",   "Frank",  "Frederick", "Gilbert",  "Gus",
+                        "Harold",   "Howard", "Humphrey",  "Isaac",    "Joseph",
+                        "Kristian", "Louis",  "Milton",    "Mortimer", "Ralph",
+                        "Seymour",  "Walter", "Wilbur"})); // NPC name.
     } else if (special == Seed::drunkWorld) {
         w.putUint32(208); // Party Girl.
         w.putString(rnd.select(
@@ -4236,6 +4364,9 @@ int main()
         world.cobaltVariant = TileID::empty;
         world.mythrilVariant = TileID::empty;
         world.adamantiteVariant = TileID::empty;
+    }
+    if (conf.hiveQueen) {
+        conf.jungleSize *= 2;
     }
     if (conf.forTheWorthy) {
         conf.spiderNestFreq *= 2.5;
@@ -4369,6 +4500,25 @@ void genAether(Random &rnd, World &world)
             growMossOn(x, y, world);
         }
     });
+    fillAetherShimmer(
+        centerX,
+        centerY,
+        size,
+        maxBubblePos,
+        maxEditPos,
+        rnd,
+        world);
+}
+
+void fillAetherShimmer(
+    int centerX,
+    int centerY,
+    double size,
+    int maxBubblePos,
+    int maxEditPos,
+    Random &rnd,
+    World &world)
+{
     for (int x = centerX - size; x < centerX + size; ++x) {
         for (int y = centerY - size; y < centerY + size; ++y) {
             Tile &tile = world.getTile(x, y);
@@ -4431,6 +4581,14 @@ class World;
 class Random;
 
 void genAether(Random &rnd, World &world);
+void fillAetherShimmer(
+    int centerX,
+    int centerY,
+    double size,
+    int maxBubblePos,
+    int maxEditPos,
+    Random &rnd,
+    World &world);
 
 #endif // AETHER_H
 
@@ -4598,7 +4756,9 @@ selectAsteroidFieldLocation(int &width, int height, Random &rnd, World &world)
                 y,
                 0.8 * widthF,
                 height,
-                [](Tile &tile) { return tile.blockID == TileID::empty; })) {
+                [](Tile &tile) {
+                    return tile.blockID == TileID::empty || tile.flag == 1;
+                })) {
             width = std::midpoint<int>(width, widthF);
             return {x, y};
         }
@@ -4607,6 +4767,27 @@ selectAsteroidFieldLocation(int &width, int height, Random &rnd, World &world)
 }
 
 void genAsteroidField(Random &rnd, World &world)
+{
+    doGenAsteroidField(
+        [&rnd](int x, int y, double radius, std::function<void(int, int)> f) {
+            for (int i = -radius; i < radius; ++i) {
+                for (int j = -radius; j < radius; ++j) {
+                    if (std::hypot(i, j) / radius <
+                        0.6 + 0.6 * rnd.getFineNoise(x + i, y + j)) {
+                        f(i, j);
+                    }
+                }
+            }
+        },
+        rnd,
+        world);
+}
+
+void doGenAsteroidField(
+    std::function<void(int, int, double, std::function<void(int, int)>)>
+        iterateAsteroid,
+    Random &rnd,
+    World &world)
 {
     std::cout << "Suspending asteroids\n";
     int width =
@@ -4633,22 +4814,20 @@ void genAsteroidField(Random &rnd, World &world)
             continue;
         }
         int paint = rnd.select({Paint::brown, Paint::black});
-        for (int i = -radius; i < radius; ++i) {
-            for (int j = -radius; j < radius; ++j) {
-                if (std::hypot(i, j) / radius <
-                    0.6 + 0.6 * rnd.getFineNoise(x + i, y + j)) {
-                    Tile &tile = world.getTile(x + i, y + j);
-                    tile.blockID =
-                        std::min(
-                            std::abs(rnd.getFineNoise(x + i, j + radius)),
-                            std::abs(rnd.getFineNoise(i + radius, y + j))) <
-                                0.03
-                            ? TileID::meteorite
-                            : TileID::stone;
-                    tile.blockPaint = paint;
-                }
-            }
-        }
+        iterateAsteroid(
+            x,
+            y,
+            radius,
+            [x, y, radius, paint, &rnd, &world](int i, int j) {
+                Tile &tile = world.getTile(x + i, y + j);
+                tile.blockID =
+                    std::min(
+                        std::abs(rnd.getFineNoise(x + i, j + radius)),
+                        std::abs(rnd.getFineNoise(i + radius, y + j))) < 0.03
+                        ? TileID::meteorite
+                        : TileID::stone;
+                tile.blockPaint = paint;
+            });
         --numAsteroids;
     }
     for (int i = 0; i < width; ++i) {
@@ -4670,10 +4849,18 @@ void genAsteroidField(Random &rnd, World &world)
 #ifndef ASTEROIDFIELD_H
 #define ASTEROIDFIELD_H
 
+#include <functional>
+
 class World;
 class Random;
 
 void genAsteroidField(Random &rnd, World &world);
+
+void doGenAsteroidField(
+    std::function<void(int, int, double, std::function<void(int, int)>)>
+        iterateAsteroid,
+    Random &rnd,
+    World &world);
 
 #endif // ASTEROIDFIELD_H
 
@@ -5168,6 +5355,36 @@ Point findStoneCave(int yMin, int yMax, Random &rnd, World &world, int minSize)
     }
 }
 
+Point getHexCentroid(Point pt, int scale)
+{
+    return getHexCentroid(pt.first, pt.second, scale);
+}
+
+Point getHexCentroid(int x, int y, int scale)
+{
+    int targetX = x;
+    int targetY = y;
+    int minDist = std::numeric_limits<int>::max();
+    double centralDist = scale * 2 / std::sqrt(3);
+    double startRow = std::floor(y / centralDist);
+    for (int col : {x / scale, x / scale + 1}) {
+        for (double row : {startRow, startRow + 1}) {
+            if (col % 2 == 0) {
+                row += 0.5;
+            }
+            int testX = col * scale;
+            int testY = row * centralDist;
+            int testDist = std::pow(x - testX, 2) + std::pow(y - testY, 2);
+            if (testDist < minDist) {
+                targetX = testX;
+                targetY = testY;
+                minDist = testDist;
+            }
+        }
+    }
+    return {targetX, targetY};
+}
+
 inline constexpr auto mossFrameX = frozen::make_map<int, int>(
     {{TileID::greenMossStone, 0},
      {TileID::brownMossStone, 22},
@@ -5232,6 +5449,37 @@ bool isInBiome(int x, int y, int scanDist, Biome biome, World &world)
     return true;
 }
 
+void iterateZone(
+    Point start,
+    World &world,
+    std::function<bool(Point)> isValid,
+    std::function<void(Point)> f)
+{
+    std::set<Point> border;
+    std::set<Point> visited;
+    std::vector<Point> locations{start};
+    while (!locations.empty()) {
+        Point loc = locations.back();
+        locations.pop_back();
+        if (loc.first < 0 || loc.second < 0 || loc.first >= world.getWidth() ||
+            loc.second >= world.getWidth() || visited.contains(loc) ||
+            border.contains(loc)) {
+            continue;
+        }
+        if (isValid(loc)) {
+            visited.insert(loc);
+            for (auto delta : {std::pair{-1, 0}, {1, 0}, {0, -1}, {0, 1}}) {
+                locations.push_back(addPts(loc, delta));
+            }
+        } else {
+            border.insert(loc);
+        }
+    }
+    for (Point loc : visited) {
+        f(loc);
+    }
+}
+
 ```
 
 #### File: `./src/biomes/BiomeUtil.h`
@@ -5241,6 +5489,7 @@ bool isInBiome(int x, int y, int scanDist, Biome biome, World &world)
 
 #include "Tile.h"
 #include "ids/Biome.h"
+#include <functional>
 #include <utility>
 
 class World;
@@ -5275,9 +5524,18 @@ Point findStoneCave(
     World &world,
     int minSize = 6);
 
+Point getHexCentroid(Point pt, int scale);
+Point getHexCentroid(int x, int y, int scale);
+
 void growMossOn(int x, int y, World &world);
 
 bool isInBiome(int x, int y, int scanDist, Biome biome, World &world);
+
+void iterateZone(
+    Point start,
+    World &world,
+    std::function<bool(Point)> isValid,
+    std::function<void(Point)> f);
 
 #endif // BIOMEUTIL_H
 
@@ -5300,6 +5558,13 @@ bool isInBiome(int x, int y, int scanDist, Biome biome, World &world);
 #include <iostream>
 #include <numbers>
 
+bool isRowZoneEmpty(int x, int y, World &world)
+{
+    return world.regionPasses(x - 2, y, 5, 1, [](Tile &tile) {
+        return tile.blockID == TileID::empty;
+    });
+}
+
 void makeFishingCloud(
     int startX,
     int startY,
@@ -5311,10 +5576,11 @@ void makeFishingCloud(
     int minX = startX + 0.2 * width;
     int maxX = startX + 0.8 * width;
     int waterLevel = startY;
-    while (world.getTile(minX, waterLevel).blockID == TileID::empty ||
-           world.getTile(maxX, waterLevel).blockID == TileID::empty) {
+    while (isRowZoneEmpty(minX, waterLevel, world) ||
+           isRowZoneEmpty(maxX, waterLevel, world)) {
         ++waterLevel;
     }
+    ++waterLevel;
     for (int x = minX; x < maxX; ++x) {
         int depth = 0.45 * height *
                     std::sin(std::numbers::pi * (x - minX) / (0.6 * width));
@@ -5524,6 +5790,7 @@ void genCloud(Random &rnd, World &world)
     std::shuffle(rooms.begin(), rooms.end(), rnd.getPRNG());
     auto roomItr = rooms.begin();
     double cloudScale = std::min(0.1 + world.getHeight() / 1400.0, 1.0);
+    int hSpacingBuffer = world.conf.hiveQueen ? -10 : 50;
     for (int tries = 500 * numClouds; numClouds > 0 && tries > 0; --tries) {
         int width = cloudScale * rnd.getInt(90, 160);
         int height = cloudScale * rnd.getInt(35, 50);
@@ -5539,21 +5806,26 @@ void genCloud(Random &rnd, World &world)
                 maxY - 1),
             maxY);
         if (!world.regionPasses(
-                x - 25,
+                x - hSpacingBuffer / 2,
                 y - 25,
-                width + 50,
+                width + hSpacingBuffer,
                 height + 50,
                 [](Tile &tile) { return tile.blockID == TileID::empty; })) {
             continue;
         }
         for (int i = 0; i < width; ++i) {
+            int hI = i;
             for (int j = 0; j < height; ++j) {
+                int hJ = j;
+                if (world.conf.hiveQueen) {
+                    std::tie(hI, hJ) = getHexCentroid(i, j, 8);
+                }
                 double threshold =
                     8 * std::hypot(
-                            static_cast<double>(i) / width - 0.5,
-                            static_cast<double>(j) / height - 0.5) -
+                            static_cast<double>(hI) / width - 0.5,
+                            static_cast<double>(hJ) / height - 0.5) -
                     3;
-                if (rnd.getFineNoise(x + i, y + j) < threshold) {
+                if (rnd.getFineNoise(x + hI, y + hJ) < threshold) {
                     continue;
                 }
                 Tile &tile = world.getTile(x + i, y + j);
@@ -5702,6 +5974,7 @@ void genCorruptionAt(int surfaceX, int undergroundX, Random &rnd, World &world)
          {TileID::sand, TileID::ebonsand},
          {TileID::jungleGrass, TileID::corruptJungleGrass},
          {TileID::mushroomGrass, TileID::corruptJungleGrass},
+         {TileID::hive, TileID::ebonstone},
          {TileID::silt, TileID::ebonstone},
          {TileID::slime, TileID::ebonstone},
          {TileID::ice, TileID::corruptIce},
@@ -5970,6 +6243,7 @@ void genCrimsonAt(int surfaceX, int undergroundX, Random &rnd, World &world)
          {TileID::sand, TileID::crimsand},
          {TileID::jungleGrass, TileID::crimsonJungleGrass},
          {TileID::mushroomGrass, TileID::crimsonJungleGrass},
+         {TileID::hive, TileID::crimstone},
          {TileID::silt, TileID::crimstone},
          {TileID::slime, TileID::crimstone},
          {TileID::ice, TileID::crimsonIce},
@@ -6765,6 +7039,12 @@ void buryEnchantedSwords(Random &rnd, World &world)
 {
     double numSwords = world.getWidth() / rnd.getInt(1800, 3800);
     std::vector<Point> usedLocations;
+    constexpr auto avoidTiles = frozen::make_set<int>(
+        {TileID::empty,
+         TileID::snow,
+         TileID::sand,
+         TileID::jungleGrass,
+         TileID::hive});
     while (numSwords > 0) {
         int x = rnd.getInt(400, 0.36 * world.getWidth());
         if (rnd.getBool()) {
@@ -6776,11 +7056,8 @@ void buryEnchantedSwords(Random &rnd, World &world)
                 y,
                 32,
                 20,
-                [](Tile &tile) {
-                    return tile.blockID != TileID::empty &&
-                           tile.blockID != TileID::snow &&
-                           tile.blockID != TileID::sand &&
-                           tile.blockID != TileID::jungleGrass;
+                [&avoidTiles](Tile &tile) {
+                    return !avoidTiles.contains(tile.blockID);
                 }) ||
             isLocationUsed(x, y, 100, usedLocations)) {
             numSwords -= 0.002;
@@ -6879,7 +7156,7 @@ void genForest(Random &rnd, World &world)
     std::cout << "Nurturing forests\n";
     rnd.shuffleNoise();
     // Grow grass.
-    if (!world.conf.patches) {
+    if (!world.conf.patches && !world.conf.hiveQueen) {
         applyForestGrass(rnd, world);
     }
     // Add living tree clumps.
@@ -6939,14 +7216,18 @@ void fillGemCave(
                 5;
             if (rnd.getFineNoise(x + i, y + j) > threshold) {
                 if (dispersal > 1 && tile.blockID == TileID::stone) {
-                    tile.blockID = blockA;
+                    tile.blockID = world.conf.hiveQueen && dispersal < 4
+                                       ? TileID::crispyHoney
+                                       : blockA;
                 }
                 if (tile.wallID != WallID::empty) {
                     tile.wallID = wallA;
                 }
             } else if (rnd.getFineNoise(x + i, y + j) < -threshold) {
                 if (dispersal > 1 && tile.blockID == TileID::stone) {
-                    tile.blockID = blockB;
+                    tile.blockID = world.conf.hiveQueen && dispersal < 4
+                                       ? TileID::crispyHoney
+                                       : blockB;
                 }
                 if (tile.wallID != WallID::empty) {
                     tile.wallID = wallB;
@@ -7730,32 +8011,6 @@ void genGraniteCave(Random &rnd, World &world);
 #include "structures/StructureUtil.h"
 #include <iostream>
 
-std::pair<int, int> getHexCentroid(int x, int y)
-{
-    int scale = 10;
-    int targetX = x;
-    int targetY = y;
-    double minDist = 2 * scale;
-    double centralDist = scale * 2 / std::sqrt(3);
-    double startRow = std::floor(y / centralDist);
-    for (int col : {x / scale, x / scale + 1}) {
-        for (double row : {startRow, startRow + 1}) {
-            if (col % 2 == 0) {
-                row += 0.5;
-            }
-            int testX = col * scale;
-            int testY = row * centralDist;
-            double testDist = std::hypot(x - testX, y - testY);
-            if (testDist < minDist) {
-                targetX = testX;
-                targetY = testY;
-                minDist = testDist;
-            }
-        }
-    }
-    return {targetX, targetY};
-}
-
 bool isHiveEdge(int x, int y, World &world)
 {
     if (world.getTile(x, y).wallID != WallID::Unsafe::hive) {
@@ -7805,12 +8060,20 @@ Point selectLarvaeLocation(
 
 void fillHive(int hiveX, int hiveY, Random &rnd, World &world)
 {
+    fillHive(
+        hiveX,
+        hiveY,
+        world.conf.hiveSize * (15 + world.getWidth() / rnd.getDouble(84, 166)),
+        rnd,
+        world);
+}
+
+void fillHive(int hiveX, int hiveY, double size, Random &rnd, World &world)
+{
     rnd.shuffleNoise();
-    double size =
-        world.conf.hiveSize * (15 + world.getWidth() / rnd.getDouble(84, 166));
     for (int x = hiveX - size; x < hiveX + size; ++x) {
         for (int y = hiveY - size; y < hiveY + size; ++y) {
-            auto [centroidX, centroidY] = getHexCentroid(x, y);
+            auto [centroidX, centroidY] = getHexCentroid(x, y, 10);
             double threshold =
                 3 * std::hypot(hiveX - centroidX, hiveY - centroidY) / size - 2;
             Tile &tile = world.getTile(x, y);
@@ -7939,6 +8202,7 @@ class World;
 class Random;
 
 void fillHive(int hiveX, int hiveY, Random &rnd, World &world);
+void fillHive(int hiveX, int hiveY, double size, Random &rnd, World &world);
 void genHive(Random &rnd, World &world);
 
 #endif // HIVE_H
@@ -7977,8 +8241,28 @@ int levitateIsland(int center, int width, Random &rnd, World &world)
     for (int x = xMin; x < xMax; ++x) {
         int yMax = yMin - 1.9 * (x - xMin) * (x - xMax) / width +
                    37 * rnd.getFineNoise(x, 0);
-        for (int y = yMin; y < yMax; ++y) {
-            std::swap(world.getTile(x, y), world.getTile(x, y + floatHeight));
+        if (world.conf.hiveQueen) {
+            for (int y = yMin; y < yMax; ++y) {
+                Tile &a = world.getTile(x, y);
+                Tile &b = world.getTile(x, y + floatHeight);
+                if (a.flag == 1) {
+                    if (b.flag != 1) {
+                        b = {};
+                    }
+                } else if (b.flag == 1) {
+                    if (y + floatHeight > world.getSurfaceLevel(x)) {
+                        a.blockID = TileID::mud;
+                    }
+                } else {
+                    std::swap(a, b);
+                }
+            }
+        } else {
+            for (int y = yMin; y < yMax; ++y) {
+                std::swap(
+                    world.getTile(x, y),
+                    world.getTile(x, y + floatHeight));
+            }
         }
     }
     return minSurface;
@@ -8115,7 +8399,10 @@ void connectSurfaceCaves(int xMin, int xMax, Random &rnd, World &world)
                 t);
             if (std::abs(rnd.getCoarseNoise(x, 2 * y) + 0.1) < 0.15 &&
                 rnd.getFineNoise(x, y) > threshold) {
-                world.getTile(x, y).blockID = TileID::empty;
+                Tile &tile = world.getTile(x, y);
+                if (tile.blockID != TileID::hive) {
+                    tile.blockID = TileID::empty;
+                }
             }
         }
     }
@@ -8517,12 +8804,18 @@ void genMeteorite(Random &rnd, World &world)
                 rnd.getInt(-1, 5);
         int numEmpty = 0;
         if (y < world.getUndergroundLevel() &&
-            world.regionPasses(x - 15, y - 8, 30, 23, [&numEmpty](Tile &tile) {
-                if (emptyBlocks.contains(tile.blockID)) {
-                    ++numEmpty;
-                }
-                return numEmpty < 90;
-            })) {
+            world.regionPasses(
+                x - 15,
+                y - 8,
+                30,
+                23,
+                [&numEmpty, &world](Tile &tile) {
+                    if (emptyBlocks.contains(tile.blockID) ||
+                        (world.conf.hiveQueen && tile.flag == 1)) {
+                        ++numEmpty;
+                    }
+                    return numEmpty < 90;
+                })) {
             placeMeteorite(x, y, rnd, world);
             ++placed;
         }
@@ -8616,20 +8909,24 @@ void addGlowRocks(std::vector<Point> &locations, Random &rnd, World &world)
     }
 }
 
-void addOceanCave(int waterTable, Random &rnd, World &world)
+void selectOceanCave(Random &rnd, World &world)
 {
     int centerOpt1 = 105;
     int centerOpt2 = world.getWidth() - 105;
-    int centerX =
+    world.oceanCaveCenter =
         centerOpt1 > world.jungleCenter - 0.11 * world.getWidth() - 220
             ? centerOpt2
         : centerOpt2 < world.jungleCenter + 0.11 * world.getWidth() + 220
             ? centerOpt1
             : rnd.select({centerOpt1, centerOpt2});
+}
+
+void addOceanCave(int waterTable, Random &rnd, World &world)
+{
     int shuffleX = rnd.getInt(0, world.getWidth());
     int shuffleY = rnd.getInt(0, world.getHeight());
     std::vector<Point> locations;
-    world.oceanCaveCenter = centerX;
+    int centerX = world.oceanCaveCenter;
     int oceanFloor =
         scanWhileEmpty({centerX - 90, waterTable}, {0, 1}, world).second;
     int minY = scanWhileEmpty({centerX + 90, waterTable}, {0, 1}, world).second;
@@ -8717,16 +9014,28 @@ void genOceans(Random &rnd, World &world)
                          world.getSurfaceLevel(300),
                          world.getSurfaceLevel(world.getWidth() - 300)) +
                      rnd.getInt(4, 12);
+    selectOceanCave(rnd, world);
     for (int x = 0; x < 390; ++x) {
         double drop = world.conf.oceanSize * 90 *
                       (1 - 1 / (1 + std::exp(0.041 * (200 - x))));
         double sandDepth = (40 + 9 * rnd.getCoarseNoise(x, 0)) *
                            std::min(1.0, (400.0 - x) / 160);
         auto fillColumn = [&](int effectiveX) {
-            for (int y = 0.3 * world.getUndergroundLevel();
+            int sandTile = TileID::sand;
+            int shellPileTile = TileID::shellPile;
+            int siltTile = TileID::silt;
+            if (world.conf.hiveQueen &&
+                ((world.oceanCaveCenter < 400) != (effectiveX < 400))) {
+                sandTile = TileID::honey;
+                shellPileTile = TileID::hive;
+                siltTile = TileID::honey;
+            }
+            for (int y = world.getSurfaceLevel(effectiveX) - 10;
                  y < world.getUndergroundLevel();
                  ++y) {
-                if (world.getTile(effectiveX, y).blockID != TileID::empty) {
+                if (world.getTile(effectiveX, y).blockID != TileID::empty &&
+                    (y > waterTable ||
+                     world.getTile(effectiveX, y).blockID != TileID::hive)) {
                     for (int i = 0; i < drop; ++i) {
                         Tile &tile = world.getTile(effectiveX, y + i);
                         tile.wallID = WallID::empty;
@@ -8744,23 +9053,23 @@ void genOceans(Random &rnd, World &world)
                         }
                         if (tile.blockID == TileID::mud ||
                             tile.blockID == TileID::jungleGrass) {
-                            tile.blockID = TileID::silt;
+                            tile.blockID = siltTile;
                         } else if (y + i > waterTable + 20) {
                             if (tile.blockID == TileID::stone ||
                                 tile.blockID == TileID::sandstone ||
                                 tile.blockID == TileID::ice) {
                                 tile.blockID = TileID::coralstone;
                             } else {
-                                tile.blockID = TileID::sand;
+                                tile.blockID = sandTile;
                             }
                         } else if (
                             tile.blockID != TileID::dirt &&
                             tile.blockID != TileID::grass &&
                             tile.blockID != TileID::sand &&
                             tile.blockID != TileID::snow) {
-                            tile.blockID = TileID::shellPile;
+                            tile.blockID = shellPileTile;
                         } else {
-                            tile.blockID = TileID::sand;
+                            tile.blockID = sandTile;
                         }
                     }
                     break;
@@ -8953,6 +9262,7 @@ void genSpiderNest(Random &rnd, World &world);
 ```
 #include "Underworld.h"
 
+#include "Config.h"
 #include "Random.h"
 #include "Util.h"
 #include "World.h"
@@ -9031,7 +9341,8 @@ void addBridges(int centerLevel, int lavaLevel, Random &rnd, World &world)
                 }
                 if (j < bridge.getHeight() - 1) {
                     Tile &tile = world.getTile(x + i, bridgeLevel + j);
-                    if (tile.blockID == TileID::empty &&
+                    if ((tile.blockID == TileID::empty ||
+                         (world.conf.hiveQueen && tile.flag == 1)) &&
                         shouldIncludePt(x + i, bridgeLevel + j)) {
                         bridgeData[{x + i, bridgeLevel + j}] = {{i, j}, -1};
                     }
@@ -9129,6 +9440,12 @@ void genUnderworld(Random &rnd, World &world)
                                        ? (centerLevel - y) / upperDist
                                        : (y - centerLevel) / lowerDist);
                 Tile &tile = world.getTile(x, y);
+                if (tile.blockID == TileID::hive &&
+                    static_cast<int>(99999 * (1 + rnd.getFineNoise(x, y))) %
+                            7 ==
+                        0) {
+                    tile.blockID = TileID::crispyHoney;
+                }
                 if (std::abs(rnd.getCoarseNoise(2 * x, y + aspectRatio * x)) <
                     threshold) {
                     for (auto [i, j] : {std::pair{-1, -1}, {-1, 0}, {0, -1}}) {
@@ -9540,6 +9857,7 @@ void genHallow(Random &rnd, World &world)
         TileID::snowCloud,
         TileID::jungleGrass,
         TileID::mushroomGrass,
+        TileID::hive,
     });
     constexpr auto hallowBlocks = frozen::make_map<int, int>({
         {TileID::grass, TileID::hallowedGrass},
@@ -9853,6 +10171,1336 @@ void genHardmodeOres(Random &rnd, World &world);
 
 ```
 
+### Folder: `./src/biomes/hiveQueen`
+
+#### File: `./src/biomes/hiveQueen/Aether.cpp`
+```
+#include "biomes/hiveQueen/Aether.h"
+
+#include "Random.h"
+#include "World.h"
+#include "biomes/Aether.h"
+#include "biomes/BiomeUtil.h"
+#include "ids/WallID.h"
+#include <iostream>
+
+Point selectAetherLocation(Random &rnd, World &world)
+{
+    while (true) {
+        int x = world.getWidth() * rnd.getDouble(0.08, 0.30);
+        if (rnd.getBool()) {
+            x = world.getWidth() - x;
+        }
+        int y = rnd.getInt(
+            (world.getUndergroundLevel() + 2 * world.getCavernLevel()) / 3,
+            (world.getCavernLevel() + 5 * world.getUnderworldLevel()) / 6);
+        if (world.regionPasses(x - 50, y - 50, 100, 100, [](Tile &tile) {
+                return tile.flag != 1;
+            })) {
+            return {x, y};
+        }
+    }
+}
+
+void genAetherHiveQueen(Random &rnd, World &world)
+{
+    std::cout << "Bridging realities\n";
+    rnd.shuffleNoise();
+    auto [x, y] = selectAetherLocation(rnd, world);
+    int maxBubblePos = y;
+    int maxEditPos = y;
+    std::vector<Point> mossLocations;
+    iterateZone(
+        {x, y},
+        world,
+        [&world](Point pt) { return world.getTile(pt).flag != 1; },
+        [x, y, &maxBubblePos, &maxEditPos, &mossLocations, &rnd, &world](
+            Point pt) {
+            double centralPropo = std::hypot(pt.first - x, pt.second - y) / 75;
+            auto blurHexNoise = [&rnd](int a, int b) {
+                Point centroid = getHexCentroid(a, b, 10);
+                return rnd.getBlurNoise(
+                    4 * centroid.first,
+                    4 * centroid.second);
+            };
+            double noiseVal =
+                std::max(
+                    std::abs(blurHexNoise(pt.first, pt.second)),
+                    std::abs(blurHexNoise(pt.first + x, pt.second + y))) *
+                std::min(1.0, 3 * (1 - centralPropo));
+            Tile &tile = world.getTile(pt);
+            if (noiseVal > 0.45) {
+                tile.blockID = TileID::bubble;
+                maxBubblePos = std::max(maxBubblePos, pt.second);
+            } else if (noiseVal > 0.09) {
+                tile.blockID = TileID::empty;
+            } else if (noiseVal > 0.02) {
+                tile.blockID = tile.blockID == TileID::empty ? TileID::aetherium
+                               : centralPropo < 0.6 ? TileID::heliumMossStone
+                                                    : TileID::stone;
+                mossLocations.push_back(pt);
+            }
+            if (noiseVal > 0.019) {
+                tile.wallID = WallID::empty;
+                maxEditPos = std::max(maxEditPos, pt.second);
+            }
+        });
+    world.queuedDeco.emplace_back([mossLocations](Random &, World &world) {
+        for (auto [x, y] : mossLocations) {
+            growMossOn(x, y, world);
+        }
+    });
+    fillAetherShimmer(x, y, 75, maxBubblePos, maxEditPos, rnd, world);
+}
+
+```
+
+#### File: `./src/biomes/hiveQueen/Aether.h`
+```
+#ifndef HIVEQUEEN_AETHER_H
+#define HIVEQUEEN_AETHER_H
+
+class World;
+class Random;
+
+void genAetherHiveQueen(Random &rnd, World &world);
+
+#endif // HIVEQUEEN_AETHER_H
+
+```
+
+#### File: `./src/biomes/hiveQueen/AsteroidField.cpp`
+```
+#include "biomes/hiveQueen/AsteroidField.h"
+
+#include "biomes/AsteroidField.h"
+#include "biomes/BiomeUtil.h"
+
+void genAsteroidFieldHiveQueen(Random &rnd, World &world)
+{
+    doGenAsteroidField(
+        [&world](int x, int y, double radius, std::function<void(int, int)> f) {
+            int scale = 1.2 * radius;
+            Point centroid = getHexCentroid(x, y, scale);
+            iterateZone(
+                {x, y},
+                world,
+                [centroid, scale](Point pt) {
+                    return getHexCentroid(pt, scale) == centroid;
+                },
+                [centroid, &f](Point pt) {
+                    f(pt.first - centroid.first, pt.second - centroid.second);
+                });
+        },
+        rnd,
+        world);
+}
+
+```
+
+#### File: `./src/biomes/hiveQueen/AsteroidField.h`
+```
+#ifndef HIVEQUEEN_ASTEROIDFIELD_H
+#define HIVEQUEEN_ASTEROIDFIELD_H
+
+class World;
+class Random;
+
+void genAsteroidFieldHiveQueen(Random &rnd, World &world);
+
+#endif // HIVEQUEEN_ASTEROIDFIELD_H
+
+```
+
+#### File: `./src/biomes/hiveQueen/Base.cpp`
+```
+#include "biomes/hiveQueen/Base.h"
+
+#include "Config.h"
+#include "Random.h"
+#include "Util.h"
+#include "World.h"
+#include "biomes/Base.h"
+#include "biomes/BiomeUtil.h"
+#include "biomes/patches/Base.h"
+#include "ids/Paint.h"
+#include "ids/WallID.h"
+#include "structures/StructureUtil.h"
+#include <algorithm>
+#include <iostream>
+#include <map>
+#include <mutex>
+#include <unordered_set>
+
+inline std::array const snowTiles{
+    TileID::snow,
+    TileID::ice,
+    TileID::stone,
+    TileID::thinIce,
+    TileID::slush};
+inline std::array const desertTiles{
+    TileID::sand,
+    TileID::sandstone,
+    TileID::desertFossil,
+    TileID::desertFossil,
+    TileID::desertFossil};
+inline std::array const jungleTiles{
+    TileID::mud,
+    TileID::mud,
+    TileID::clay,
+    TileID::silt,
+    TileID::stone};
+inline std::array const forestTiles{
+    TileID::dirt,
+    TileID::stone,
+    TileID::clay,
+    TileID::sand,
+    TileID::mud};
+inline std::array const underworldTiles{
+    TileID::ash,
+    TileID::ash,
+    TileID::ash,
+    TileID::ash,
+    TileID::ash};
+
+inline auto hashPoint = [](const Point &pt) {
+    return fnv1a32pt(pt.first, pt.second);
+};
+
+std::vector<Point>
+iterateHex(Point start, int scale, std::function<void(Point)> f)
+{
+    std::unordered_set<Point, decltype(hashPoint)> visited(
+        scale * scale,
+        hashPoint);
+    std::vector<Point> locations{start};
+    Point centroid = getHexCentroid(start, scale);
+    std::vector<Point> border;
+    while (!locations.empty()) {
+        Point loc = locations.back();
+        locations.pop_back();
+        if (visited.contains(loc)) {
+            continue;
+        }
+        visited.insert(loc);
+        if (centroid == getHexCentroid(loc, scale)) {
+            f(loc);
+            for (auto delta : {std::pair{-1, 0}, {1, 0}, {0, -1}, {0, 1}}) {
+                locations.push_back(addPts(loc, delta));
+            }
+        } else {
+            border.push_back(loc);
+        }
+    }
+    return border;
+}
+
+int getWallVarIndex(
+    int x,
+    int y,
+    const std::vector<std::pair<int, int>> &wallVarNoise,
+    Random &rnd);
+
+Biome getBiomeAt(int x, int y, Random &rnd, World &world)
+{
+    if (world.conf.patches) {
+        return computeBiomeData(x, y, rnd).active;
+    }
+    if (y >= world.getUnderworldLevel() + 20 * rnd.getCoarseNoise(x, 0)) {
+        return Biome::underworld;
+    } else if (
+        std::abs(x - world.jungleCenter) <
+        world.conf.jungleSize * 0.09 * world.getWidth()) {
+        return Biome::jungle;
+    } else if (
+        y < 0.7917 * world.getHeight() &&
+        std::abs(x - world.desertCenter) <
+            world.conf.desertSize * 0.0584 * world.getWidth()) {
+        return Biome::desert;
+    } else if (
+        y < 0.7244 * world.getHeight() &&
+        std::abs(x - world.snowCenter) <
+            world.conf.snowSize * 0.0584 * world.getWidth()) {
+        return Biome::snow;
+    }
+    return Biome::forest;
+}
+
+std::vector<Point> planHiveQueenBiomes(Random &rnd, World &world)
+{
+    world.initBiomeData();
+    std::mutex ptMtx;
+    std::vector<Point> borders;
+    Point hexShift{rnd.getInt(0, 99999), rnd.getInt(0, 99999)};
+    parallelFor(
+        std::views::iota(0, world.getWidth()),
+        [hexShift, &ptMtx, &borders, &rnd, &world](int x) {
+            auto valueLess = [](const std::pair<Biome, int> &a,
+                                const std::pair<Biome, int> &b) {
+                return a.second < b.second;
+            };
+            std::vector<Point> queuedBorders;
+            for (int y = 0; y < world.getHeight(); ++y) {
+                if (world.getBiome(x, y).forest > 0) {
+                    continue;
+                }
+                std::vector<Point> locations;
+                std::map<Biome, int> biomes;
+                std::vector<Point> hexBorder = iterateHex(
+                    addPts({x, y}, hexShift),
+                    131,
+                    [hexShift, &locations, &biomes, &rnd, &world](Point pt) {
+                        pt = subPts(pt, hexShift);
+                        if (pt.first < 0 || pt.second < 0 ||
+                            pt.first >= world.getWidth() ||
+                            pt.second >= world.getHeight()) {
+                            return;
+                        }
+                        locations.push_back(pt);
+                        biomes[getBiomeAt(pt.first, pt.second, rnd, world)] +=
+                            1;
+                    });
+                for (Point pt : hexBorder) {
+                    queuedBorders.push_back(subPts(pt, hexShift));
+                }
+                auto targBiome =
+                    std::max_element(biomes.begin(), biomes.end(), valueLess);
+                for (auto [ptX, ptY] : locations) {
+                    BiomeData &biome = world.getBiome(ptX, ptY);
+                    biome.active = targBiome->first;
+                    biome.forest = 1;
+                }
+            }
+            if (!queuedBorders.empty()) {
+                std::lock_guard lock{ptMtx};
+                borders.insert(
+                    borders.end(),
+                    queuedBorders.begin(),
+                    queuedBorders.end());
+            }
+        });
+    parallelFor(std::views::iota(0, world.getWidth()), [&world](int x) {
+        for (int y = 0; y < world.getHeight(); ++y) {
+            BiomeData &biome = world.getBiome(x, y);
+            biome.forest = 0;
+            switch (biome.active) {
+            case Biome::forest:
+                biome.forest = 1;
+                break;
+            case Biome::snow:
+                biome.snow = 1;
+                break;
+            case Biome::desert:
+                biome.desert = 1;
+                break;
+            case Biome::jungle:
+                biome.jungle = 1;
+                break;
+            case Biome::underworld:
+                biome.underworld = 1;
+                break;
+            }
+        }
+    });
+    if (world.conf.patches) {
+        identifySurfaceBiomes(world);
+    }
+    return borders;
+}
+
+void genWorldBaseHiveQueen(Random &rnd, World &world)
+{
+    std::cout << "Generating base terrain\n";
+    rnd.shuffleNoise();
+    rnd.saveShuffleState();
+    std::vector<std::pair<int, int>> depositNoise;
+    for (int iter = 0; iter < 7; ++iter) {
+        depositNoise.emplace_back(
+            rnd.getInt(0, world.getWidth()),
+            rnd.getInt(0, world.getHeight()));
+    }
+    std::vector<std::pair<int, int>> wallVarNoise;
+    for (size_t iter = 0; iter < WallVariants::dirt.size(); ++iter) {
+        wallVarNoise.emplace_back(
+            rnd.getInt(0, world.getWidth()),
+            rnd.getInt(0, world.getHeight()));
+    }
+    computeSurfaceLevel(rnd, world);
+    std::vector<Point> hexBorders = planHiveQueenBiomes(rnd, world);
+    double oreThreshold = computeOreThreshold(1.35 * world.conf.ore);
+    double goldThreshold = world.conf.forTheWorthy
+                               ? computeOreThreshold(1.82 * world.conf.ore)
+                               : oreThreshold;
+    int lavaLevel =
+        (world.getCavernLevel() + 2 * world.getUnderworldLevel()) / 3;
+    parallelFor(
+        std::views::iota(0, world.getWidth()),
+        [lavaLevel,
+         oreThreshold,
+         goldThreshold,
+         &depositNoise,
+         &wallVarNoise,
+         &rnd,
+         &world](int x) {
+            bool nearEdge = x < 350 || x > world.getWidth() - 350;
+            for (int y = 0; y < world.getHeight(); ++y) {
+                BiomeData &biome = world.getBiome(x, y);
+                if (y < world.getSurfaceLevel(x)) {
+                    continue;
+                }
+                double threshold =
+                    y < world.getUndergroundLevel()
+                        ? 3.0 * y / world.getUndergroundLevel() - 3
+                        : static_cast<double>(y - world.getUndergroundLevel()) /
+                              (world.getHeight() - world.getUndergroundLevel());
+                int tileType = rnd.getFineNoise(
+                                   x + depositNoise[0].first,
+                                   y + depositNoise[1].second) > threshold
+                                   ? 0
+                                   : 1;
+                for (int iter = 0; iter < 3; ++iter) {
+                    if (rnd.getFineNoise(
+                            x + depositNoise[iter].first,
+                            y + depositNoise[iter].second) > 0.7) {
+                        tileType = iter + 2;
+                        break;
+                    }
+                }
+                Tile &tile = world.getTile(x, y);
+                switch (biome.active) {
+                case Biome::snow: {
+                    tile.blockID = snowTiles[tileType];
+                    int index = getWallVarIndex(x, y, wallVarNoise, rnd);
+                    if (index != -1 &&
+                        fnv1a32pt(index, wallVarNoise[0].second) % 5 == 0) {
+                        tile.wallID = WallVariants::stone
+                            [wallVarNoise[0].first %
+                             WallVariants::stone.size()];
+                    } else if (index != -1 || y < world.getUndergroundLevel()) {
+                        tile.wallID = tile.blockID == TileID::snow
+                                          ? WallID::Unsafe::snow
+                                          : WallID::Unsafe::ice;
+                    }
+                    break;
+                }
+                case Biome::desert:
+                    tile.blockID = desertTiles[tileType];
+                    if (y > world.getCavernLevel() &&
+                        tile.blockID == TileID::sandstone) {
+                        if (std::abs(
+                                rnd.getCoarseNoise(
+                                    x + depositNoise[2].first,
+                                    y + depositNoise[3].second) +
+                                0.23) < 0.04) {
+                            tile.blockID = TileID::sand;
+                        } else if (
+                            std::abs(
+                                rnd.getCoarseNoise(
+                                    x + depositNoise[2].first,
+                                    y + depositNoise[3].second) -
+                                0.23) < 0.04) {
+                            tile.blockID = TileID::hardenedSand;
+                        }
+                    }
+                    tile.wallID = tile.blockID == TileID::sandstone
+                                      ? WallID::Unsafe::sandstone
+                                      : WallID::Unsafe::hardenedSand;
+                    break;
+                case Biome::jungle:
+                    tile.blockID = jungleTiles
+                        [y > lavaLevel && tileType == 0 ? 3 : tileType];
+                    if (y < world.getUndergroundLevel()) {
+                        tile.wallID = WallID::Unsafe::mud;
+                    } else {
+                        int index = getWallVarIndex(x, y, wallVarNoise, rnd);
+                        if (index != -1) {
+                            tile.wallID = WallVariants::jungle
+                                [fnv1a32pt(index, wallVarNoise[1].first) %
+                                 WallVariants::jungle.size()];
+                        }
+                    }
+                    break;
+                case Biome::forest: {
+                    tile.blockID = forestTiles[tileType];
+                    int index = getWallVarIndex(x, y, wallVarNoise, rnd);
+                    if (index != -1) {
+                        tile.wallID = WallVariants::dirt[index];
+                    } else if (y < world.getUndergroundLevel()) {
+                        tile.wallID = tile.blockID == TileID::stone
+                                          ? WallID::Unsafe::rockyDirt
+                                          : WallID::Unsafe::dirt;
+                    }
+                    break;
+                }
+                case Biome::underworld: {
+                    tile.blockID = underworldTiles[tileType];
+                    int index = getWallVarIndex(x, y, wallVarNoise, rnd);
+                    if (index != -1) {
+                        tile.wallID = WallVariants::underworld
+                            [fnv1a32pt(index, wallVarNoise[2].first) %
+                             WallVariants::underworld.size()];
+                    }
+                    break;
+                }
+                }
+                threshold = 0.4 + 0.03 * rnd.getFineNoise(x, y);
+                if ((biome.desert > threshold && biome.snow > threshold) ||
+                    (biome.snow > 0.57 && biome.active == Biome::desert) ||
+                    (biome.desert > 0.57 && biome.active == Biome::snow)) {
+                    tile.blockID = TileID::marble;
+                    tile.wallID = WallID::Unsafe::marble;
+                }
+                for (auto [idx, oreRoof, oreFloor, ore] :
+                     {std::tuple{
+                          3,
+                          0.6 * world.getUndergroundLevel(),
+                          (world.getUndergroundLevel() +
+                           world.getCavernLevel()) /
+                              2,
+                          world.copperVariant},
+                      {4,
+                       0.85 * world.getUndergroundLevel(),
+                       (2 * world.getCavernLevel() +
+                        world.getUnderworldLevel()) /
+                           3,
+                       world.ironVariant},
+                      {5,
+                       (world.getUndergroundLevel() + world.getCavernLevel()) /
+                           2,
+                       (world.getCavernLevel() + world.getUnderworldLevel()) /
+                           2,
+                       world.silverVariant},
+                      {6,
+                       (2 * world.getCavernLevel() +
+                        world.getUnderworldLevel()) /
+                           3,
+                       world.getUnderworldLevel(),
+                       world.goldVariant}}) {
+                    if (y > oreRoof && y < oreFloor &&
+                        rnd.getFineNoise(
+                            x + depositNoise[idx].first,
+                            y + depositNoise[idx].second) <
+                            (ore == world.goldVariant ? goldThreshold
+                                                      : oreThreshold)) {
+                        tile.blockID = ore;
+                        break;
+                    }
+                }
+                if (nearEdge && y < 0.9 * world.getUndergroundLevel()) {
+                    continue;
+                }
+                threshold =
+                    y < world.getUndergroundLevel()
+                        ? 2.94 - 3.1 * y / world.getUndergroundLevel()
+                    : y > world.getUnderworldLevel()
+                        ? 3.1 * (y - world.getUnderworldLevel()) / 230 - 0.16
+                        : -0.16;
+                if (std::abs(rnd.getCoarseNoise(x, 2 * y) + 0.1) < 0.15 &&
+                    rnd.getFineNoise(x, y) > threshold) {
+                    tile.wireRed = true;
+                }
+                threshold =
+                    y > world.getUnderworldLevel()
+                        ? (world.getUnderworldLevel() - y) / 10.0
+                        : static_cast<double>(y - world.getUndergroundLevel()) /
+                                  (world.getUnderworldLevel() -
+                                   world.getUndergroundLevel()) -
+                              1;
+                if (std::abs(rnd.getCoarseNoise(x, 2 * y)) > 0.55 &&
+                    rnd.getFineNoise(x, y) < threshold + 0.1) {
+                    tile.wireRed = true;
+                }
+                if (y > world.getCavernLevel() && biome.jungle > 0.01) {
+                    threshold =
+                        2.0 * (y - world.getCavernLevel()) *
+                            (y - world.getHeight()) /
+                            std::pow(
+                                world.getHeight() - world.getCavernLevel(),
+                                2) +
+                        0.75;
+                    threshold = std::lerp(1.0, threshold, biome.jungle);
+                    if (y > world.getCavernLevel() &&
+                        rnd.getCoarseNoise(2 * x, 2 * y) > threshold) {
+                        tile.wireRed = true;
+                    }
+                }
+                if (biome.snow > 0.01) {
+                    threshold = std::max(
+                        -0.1,
+                        1 + 15.0 * (world.getCavernLevel() - y) /
+                                world.getHeight());
+                    threshold = std::lerp(1.0, threshold, biome.snow);
+                    if (std::abs(rnd.getCoarseNoise(2 * x, y) + 0.1) < 0.12 &&
+                        rnd.getFineNoise(x, y) > threshold) {
+                        if (tile.blockID == TileID::snow) {
+                            tile.blockID = TileID::thinIce;
+                        } else {
+                            tile.wireRed = true;
+                        }
+                    }
+                }
+                if (tile.wireRed && y < world.getUndergroundLevel()) {
+                    if (biome.active == Biome::jungle) {
+                        int index = getWallVarIndex(x, y, wallVarNoise, rnd);
+                        if (fnv1a32pt(index, wallVarNoise[3].second) % 3 == 0) {
+                            tile.wallID = WallVariants::stone
+                                [fnv1a32pt(index, wallVarNoise[3].first) %
+                                 WallVariants::stone.size()];
+                        } else {
+                            tile.wallID = WallID::Unsafe::jungle;
+                        }
+                    } else if (
+                        biome.active == Biome::forest &&
+                        getWallVarIndex(x, y, wallVarNoise, rnd) < 1) {
+                        tile.wallID = rnd.getFineNoise(
+                                          x + wallVarNoise[4].first,
+                                          y + wallVarNoise[4].second) > 0
+                                          ? WallID::Unsafe::grass
+                                          : WallID::Unsafe::flower;
+                    }
+                }
+            }
+        });
+
+    parallelFor(
+        std::views::iota(0, world.getWidth()),
+        [underworldHeight = world.getHeight() - world.getUnderworldLevel(),
+         hellstoneThreshold = -computeOreThreshold(4.24492 * world.conf.ore),
+         &rnd,
+         &world](int x) {
+            int underworldRoof =
+                world.getUnderworldLevel() + 0.22 * underworldHeight +
+                19 * rnd.getCoarseNoise(x, 0.33 * world.getHeight());
+            int underworldFloor =
+                world.getUnderworldLevel() + 0.42 * underworldHeight +
+                35 * rnd.getCoarseNoise(x, 0.66 * world.getHeight());
+            for (int y =
+                     world.getUnderworldLevel() + 20 * rnd.getCoarseNoise(x, 0);
+                 y < world.getHeight();
+                 ++y) {
+                Tile &tile = world.getTile(x, y);
+                if (y > underworldFloor) {
+                    if (std::abs(rnd.getFineNoise(x, y)) > hellstoneThreshold) {
+                        tile.blockID = TileID::hellstone;
+                    }
+                } else if (y > underworldRoof && tile.blockID == TileID::ash) {
+                    tile.wireRed = true;
+                }
+            }
+        });
+
+    std::cout << "Generating honeycomb\n";
+    parallelFor(std::views::iota(0, world.getWidth()), [&rnd, &world](int x) {
+        auto valueLess = [](const Point &a, const Point &b) {
+            return a.second < b.second;
+        };
+        for (int y = 0; y < world.getHeight(); ++y) {
+            if (world.getTile(x, y).wireBlue) {
+                continue;
+            }
+            std::vector<Point> locations;
+            std::map<int, int> tiles;
+            std::map<int, int> walls;
+            iterateHex(
+                {x, y},
+                10,
+                [&locations, &tiles, &walls, &world](Point pt) {
+                    if (pt.first < 0 || pt.second < 0 ||
+                        pt.first >= world.getWidth() ||
+                        pt.second >= world.getHeight()) {
+                        return;
+                    }
+                    locations.push_back(pt);
+                    Tile &tile = world.getTile(pt);
+                    tiles[tile.wireRed ? TileID::empty : tile.blockID] += 1;
+                    walls[tile.wallID] += 1;
+                });
+            tiles[TileID::empty] *= 1.3;
+            if (y < world.getUndergroundLevel()) {
+                walls[WallID::empty] *= 1.3;
+            }
+            auto targTile =
+                std::max_element(tiles.begin(), tiles.end(), valueLess);
+            auto targWall =
+                std::max_element(walls.begin(), walls.end(), valueLess);
+            int threshold = std::max<int>(0.6 * locations.size(), 2);
+            if (targTile->second < threshold) {
+                targTile->second = -1;
+            } else {
+                int oreCount = 0;
+                for (auto ore :
+                     {TileID::copperOre,
+                      TileID::tinOre,
+                      TileID::ironOre,
+                      TileID::leadOre,
+                      TileID::silverOre,
+                      TileID::tungstenOre,
+                      TileID::goldOre,
+                      TileID::platinumOre,
+                      TileID::hellstone,
+                      TileID::desertFossil}) {
+                    oreCount += tiles[ore];
+                }
+                if (oreCount < threshold &&
+                    oreCount > std::max(threshold / 4, 5)) {
+                    targTile->second = -1;
+                }
+            }
+            if (targWall->second < threshold) {
+                targWall->second = -1;
+            }
+            Point centroid = getHexCentroid(x, y, 10);
+            int hexFlag =
+                static_cast<int>(
+                    99999 *
+                    (1 + rnd.getFineNoise(centroid.first, centroid.second))) %
+                            11 <
+                        4
+                    ? 2
+                    : 3;
+            for (auto pt : locations) {
+                Tile &tile = world.getTile(pt);
+                tile.wireRed = false;
+                tile.wireBlue = true;
+                if (targTile->second > 0) {
+                    tile.blockID = targTile->first;
+                }
+                if (targWall->second > 0) {
+                    tile.wallID = targWall->first;
+                }
+                tile.flag = hexFlag;
+            }
+        }
+    });
+
+    parallelFor(std::views::iota(0, world.getWidth()), [&rnd, &world](int x) {
+        int surfaceLevel =
+            scanWhileEmpty({x, world.getSurfaceLevel(x) - 10}, {0, 1}, world)
+                .second +
+            1;
+        world.getSurfaceLevel(x) = surfaceLevel;
+        for (int y = 0; y < world.getHeight(); ++y) {
+            Tile &tile = world.getTile(x, y);
+            if (y <= surfaceLevel) {
+                tile.wallID = WallID::empty;
+            }
+            BiomeData &biome = world.getBiome(x, y);
+            tile.wireBlue = false;
+            if (!world.isExposed(x, y)) {
+
+                if (y < world.getUndergroundLevel() &&
+                    ((biome.active == Biome::forest &&
+                      tile.blockID == TileID::dirt) ||
+                     (biome.active == Biome::jungle &&
+                      tile.blockID == TileID::mud)) &&
+                    static_cast<int>(99999 * (1 + rnd.getFineNoise(x, y))) %
+                            100 ==
+                        0) {
+                    tile.blockID = biome.active == Biome::forest
+                                       ? TileID::grass
+                                       : TileID::jungleGrass;
+                }
+
+                continue;
+            }
+            if (biome.active == Biome::forest &&
+                y < world.getUndergroundLevel()) {
+                if (tile.blockID == TileID::dirt) {
+                    tile.blockID = TileID::grass;
+                }
+            } else if (biome.active == Biome::jungle) {
+                if (tile.blockID == TileID::mud) {
+                    tile.blockID = TileID::jungleGrass;
+                }
+            } else if (
+                biome.active == Biome::underworld &&
+                y < world.getSurfaceLevel(x) + 10 &&
+                std::abs(x - world.getWidth() / 2) < 100) {
+                if (tile.blockID == TileID::ash) {
+                    tile.blockID = TileID::ashGrass;
+                }
+            }
+        }
+    });
+    world.spawnY = world.getSurfaceLevel(world.getWidth() / 2) - 1;
+
+    parallelFor(hexBorders, [&world](Point pt) {
+        for (int i = -3; i < 3; ++i) {
+            for (int j = -3; j < 3; ++j) {
+                Tile &tile = world.getTile(pt.first + i, pt.second + j);
+                tile.blockID = TileID::hive;
+                tile.wallID = WallID::Unsafe::hive;
+                tile.flag = 1;
+            }
+        }
+    });
+    world.queuedDeco.emplace_back([](Random &, World &world) {
+        parallelFor(std::views::iota(0, world.getWidth()), [&world](int x) {
+            for (int y = 0; y < world.getHeight(); ++y) {
+                Tile &tile = world.getTile(x, y);
+                if (tile.blockID == TileID::stone && !tile.actuated &&
+                    tile.blockPaint == Paint::none) {
+                    if (tile.flag == 2) {
+                        tile.blockPaint = Paint::deepYellow;
+                    } else if (tile.flag == 3) {
+                        tile.blockPaint = Paint::deepOrange;
+                    }
+                }
+            }
+        });
+    });
+}
+
+```
+
+#### File: `./src/biomes/hiveQueen/Base.h`
+```
+#ifndef HIVEQUEEN_BASE_H
+#define HIVEQUEEN_BASE_H
+
+class World;
+class Random;
+
+void genWorldBaseHiveQueen(Random &rnd, World &world);
+
+#endif // HIVEQUEEN_BASE_H
+
+```
+
+#### File: `./src/biomes/hiveQueen/GlowingMoss.cpp`
+```
+#include "biomes/hiveQueen/GlowingMoss.h"
+
+#include "Config.h"
+#include "Random.h"
+#include "World.h"
+#include "biomes/BiomeUtil.h"
+#include "ids/WallID.h"
+#include <iostream>
+#include <set>
+
+Point selectGlowingMossLocation(
+    std::set<Point> &visited,
+    Random &rnd,
+    World &world)
+{
+    for (int tries = 0; tries < 500; ++tries) {
+        int x = rnd.getInt(75, world.getWidth() - 75);
+        int y = rnd.getInt(
+            std::midpoint(world.getUndergroundLevel(), world.getCavernLevel()),
+            world.getUnderworldLevel());
+        if (!visited.contains({x, y}) &&
+            world.getBiome(x, y).active == Biome::forest &&
+            world.regionPasses(x - 4, y - 4, 8, 8, [](Tile &tile) {
+                return tile.blockID == TileID::stone;
+            })) {
+            return {x, y};
+        }
+    }
+    return {-1, -1};
+}
+
+void fillGlowingMossHex(
+    int x,
+    int y,
+    int mossType,
+    std::set<Point> &visited,
+    Random &rnd,
+    World &world)
+{
+    iterateZone(
+        {x, y},
+        world,
+        [&world](Point pt) { return world.getTile(pt).flag != 1; },
+        [&visited, &rnd, &world](Point pt) {
+            visited.insert(pt);
+            Tile &tile = world.getTile(pt);
+            if (tile.blockID == TileID::dirt || tile.blockID == TileID::stone) {
+                Point centroid = getHexCentroid(pt, 6);
+                if (std::max(
+                        std::abs(rnd.getBlurNoise(
+                            5 * centroid.first,
+                            5 * centroid.second)),
+                        std::abs(rnd.getBlurNoise(
+                            7 * centroid.first,
+                            7 * centroid.second))) > 0.6) {
+                    tile.blockID = TileID::empty;
+                }
+            }
+        });
+    std::map<int, int> wallRepl;
+    for (int wallId : WallVariants::dirt) {
+        wallRepl[wallId] = mossType == TileID::lavaMossStone
+                               ? rnd.select(WallVariants::underworld)
+                               : rnd.select(WallVariants::stone);
+    }
+    std::vector<Point> mossLocations;
+    iterateZone(
+        {x, y},
+        world,
+        [&world](Point pt) { return world.getTile(pt).flag != 1; },
+        [mossType, &wallRepl, &mossLocations, &world](Point pt) {
+            Tile &tile = world.getTile(pt);
+            auto itr = wallRepl.find(tile.wallID);
+            if (itr != wallRepl.end()) {
+                tile.wallID = itr->second;
+            }
+            if (tile.blockID == TileID::stone &&
+                world.isExposed(pt.first, pt.second)) {
+                tile.blockID = mossType;
+                mossLocations.push_back(pt);
+            }
+        });
+    world.queuedDeco.emplace_back([mossLocations](Random &, World &world) {
+        for (auto [x, y] : mossLocations) {
+            growMossOn(x, y, world);
+        }
+    });
+}
+
+void genGlowingMossHiveQueen(Random &rnd, World &world)
+{
+    std::cout << "Energizing moss\n";
+    int numCaves = world.conf.glowingMossFreq * rnd.getDouble(2, 9);
+    int scanDist = world.conf.glowingMossSize * 48;
+    std::set<Point> visited;
+    for (int iter = 0; iter < numCaves; ++iter) {
+        auto [x, y] = selectGlowingMossLocation(visited, rnd, world);
+        if (x == -1) {
+            continue;
+        }
+        int mossType = rnd.select(
+            {TileID::kryptonMossStone,
+             TileID::xenonMossStone,
+             TileID::argonMossStone,
+             TileID::neonMossStone});
+        if (y > (world.getCavernLevel() + 4 * world.getUnderworldLevel()) / 5) {
+            mossType = rnd.select({mossType, (int)TileID::lavaMossStone});
+        }
+        rnd.shuffleNoise();
+        fillGlowingMossHex(x, y, mossType, visited, rnd, world);
+        for (int probes = world.conf.glowingMossSize * 10; probes > 0;
+             --probes) {
+            int i = rnd.getInt(-scanDist, scanDist);
+            int j = rnd.getInt(-scanDist, scanDist);
+            if (!visited.contains({x + i, y + j}) &&
+                world.getBiome(x + i, y + j).active == Biome::forest &&
+                world.getTile(x + i, y + j).blockID == TileID::stone) {
+                fillGlowingMossHex(x + i, y + j, mossType, visited, rnd, world);
+            }
+        }
+    }
+}
+
+```
+
+#### File: `./src/biomes/hiveQueen/GlowingMoss.h`
+```
+#ifndef HIVEQUEEN_GLOWINGMOSS_H
+#define HIVEQUEEN_GLOWINGMOSS_H
+
+class World;
+class Random;
+
+void genGlowingMossHiveQueen(Random &rnd, World &world);
+
+#endif // HIVEQUEEN_GLOWINGMOSS_H
+
+```
+
+#### File: `./src/biomes/hiveQueen/GlowingMushroom.cpp`
+```
+#include "biomes/hiveQueen/GlowingMushroom.h"
+
+#include "Config.h"
+#include "Random.h"
+#include "World.h"
+#include "biomes/BiomeUtil.h"
+#include "ids/WallID.h"
+#include <iostream>
+
+void fillMushroomFieldHex(
+    int centerX,
+    int fieldFloor,
+    Random &rnd,
+    World &world)
+{
+    rnd.shuffleNoise();
+    int fieldSize = rnd.getInt(75, 100);
+    int centerY = fieldFloor - 0.35 * fieldSize;
+    world.mushroomCenter.emplace_back(centerX, centerY);
+    int secondaryBlock = rnd.select({TileID::silt, TileID::slime});
+    iterateZone(
+        {centerX, fieldFloor},
+        world,
+        [&world](Point pt) { return world.getTile(pt).flag != 1; },
+        [&](Point pt) {
+            auto coarseHexNoise = [&rnd](int x, int y) {
+                Point centroid = getHexCentroid(x, y, 10);
+                return rnd.getCoarseNoise(centroid.first, centroid.second);
+            };
+            auto [x, y] = pt;
+            Tile &tile = world.getTile(x, y);
+            if (std::abs(coarseHexNoise(x, y)) > 0.07 &&
+                std::abs(coarseHexNoise(x + centerX, y + centerY)) > 0.07 &&
+                y > fieldFloor +
+                        5 * rnd.getFineNoise(x, world.getUndergroundLevel()) -
+                        0.7 * std::sqrt(std::max(
+                                  fieldSize * fieldSize -
+                                      std::pow(centerX - x, 2),
+                                  0.0)) &&
+                y < fieldFloor + 10 * coarseHexNoise(x, 0)) {
+                tile.blockID = TileID::empty;
+                tile.wallID = WallID::empty;
+                for (auto [i, j] : {std::pair{-1, -1}, {-1, 0}, {0, -1}}) {
+                    Tile &prevTile = world.getTile(x + i, y + j);
+                    if (prevTile.blockID == TileID::mud) {
+                        prevTile.blockID = TileID::mushroomGrass;
+                    }
+                }
+            } else {
+                switch (tile.blockID) {
+                case TileID::grass:
+                    tile.blockID = TileID::mushroomGrass;
+                    if (tile.wallID != WallID::empty) {
+                        tile.wallID = WallID::Unsafe::mushroom;
+                    }
+                    break;
+                case TileID::stone:
+                case TileID::clay:
+                case TileID::sand:
+                case TileID::mud:
+                    tile.blockID =
+                        world.isExposed(x, y) || rnd.getInt(0, 35) == 0
+                            ? TileID::mushroomGrass
+                            : TileID::mud;
+                    [[fallthrough]];
+                case TileID::empty:
+                    if (tile.wallID != WallID::empty) {
+                        tile.wallID = WallID::Unsafe::mushroom;
+                    }
+                    break;
+                case TileID::dirt:
+                    tile.blockID = secondaryBlock;
+                    break;
+                }
+            }
+        });
+}
+
+void genGlowingMushroomHiveQueen(Random &rnd, World &world)
+{
+    std::cout << "Fertilizing glowing mushrooms\n";
+    int numFields = std::max<int>(
+        world.conf.glowingMushroomFreq * world.getWidth() * world.getHeight() /
+            3388000,
+        2);
+    for (int tries = 100 * numFields; numFields > 0 && tries > 0; --tries) {
+        int centerX = world.getWidth() * rnd.getDouble(0.05, 0.95);
+        int fieldFloor =
+            rnd.getInt(world.getCavernLevel(), world.getUnderworldLevel() - 50);
+        if (world.getBiome(centerX, fieldFloor).active != Biome::forest ||
+            !world.regionPasses(
+                centerX - 25,
+                fieldFloor - 55,
+                50,
+                60,
+                [](Tile &tile) {
+                    return tile.blockID != TileID::marble && tile.flag != 1;
+                })) {
+            continue;
+        }
+        fillMushroomFieldHex(centerX, fieldFloor, rnd, world);
+        --numFields;
+    }
+    int mushroomLevel =
+        (world.getCavernLevel() + 3 * world.getUnderworldLevel()) / 4;
+    for (int x = 0; x < world.getWidth(); x += 50) {
+        for (int y = mushroomLevel; y < world.getUnderworldLevel() + 20;
+             y += 50) {
+            if (world.getBiome(x, y).active == Biome::jungle &&
+                rnd.getInt(0, 5) == 0 &&
+                world.regionPasses(x - 8, y - 8, 16, 16, [](Tile &tile) {
+                    return tile.wallID != WallID::Unsafe::mushroom;
+                })) {
+                iterateZone(
+                    {x, y},
+                    world,
+                    [&world](Point pt) { return world.getTile(pt).flag != 1; },
+                    [&](Point pt) {
+                        Tile &tile = world.getTile(pt);
+                        switch (tile.blockID) {
+                        case TileID::jungleGrass:
+                            tile.blockID = TileID::mushroomGrass;
+                            break;
+                        case TileID::mud:
+                            tile.blockID = rnd.getInt(0, 35) == 0
+                                               ? TileID::mushroomGrass
+                                               : TileID::mud;
+                            break;
+                        case TileID::silt:
+                            tile.blockID = TileID::slime;
+                            break;
+                        }
+                        if (tile.wallID != WallID::empty) {
+                            tile.wallID = WallID::Unsafe::mushroom;
+                        }
+                    });
+            }
+        }
+    }
+}
+
+```
+
+#### File: `./src/biomes/hiveQueen/GlowingMushroom.h`
+```
+#ifndef HIVEQUEEN_GLOWINGMUSHROOM_H
+#define HIVEQUEEN_GLOWINGMUSHROOM_H
+
+class World;
+class Random;
+
+void genGlowingMushroomHiveQueen(Random &rnd, World &world);
+
+#endif // HIVEQUEEN_GLOWINGMUSHROOM_H
+
+```
+
+#### File: `./src/biomes/hiveQueen/GraniteCave.cpp`
+```
+#include "biomes/hiveQueen/GraniteCave.h"
+
+#include "Config.h"
+#include "Random.h"
+#include "World.h"
+#include "biomes/BiomeUtil.h"
+#include "ids/WallID.h"
+#include <iostream>
+#include <set>
+
+void fillGraniteCaveHex(int x, int y, World &world)
+{
+    std::set<Point> clearCenters;
+    iterateZone(
+        {x, y},
+        world,
+        [&world](Point pt) { return world.getTile(pt).flag != 1; },
+        [&clearCenters, &world](Point pt) {
+            Point centroid = getHexCentroid(pt, 12);
+            if (world.getTile(pt).blockID == TileID::empty ||
+                world.getTile(centroid).blockID == TileID::empty) {
+                clearCenters.insert(centroid);
+            }
+        });
+    iterateZone(
+        {x, y},
+        world,
+        [&world](Point pt) { return world.getTile(pt).flag != 1; },
+        [&clearCenters, &world](Point pt) {
+            Tile &tile = world.getTile(pt);
+            switch (tile.blockID) {
+            case TileID::dirt:
+            case TileID::grass:
+            case TileID::stone:
+            case TileID::mud:
+                tile.blockID = clearCenters.contains(getHexCentroid(pt, 12))
+                                   ? TileID::empty
+                                   : TileID::granite;
+                break;
+            case TileID::sand:
+            case TileID::clay:
+                tile.blockID = clearCenters.contains(getHexCentroid(pt, 12))
+                                   ? TileID::empty
+                                   : TileID::smoothGranite;
+                break;
+            }
+            if ((!world.conf.shattered &&
+                 pt.second < world.getUnderworldLevel()) ||
+                tile.wallID != WallID::empty) {
+                tile.wallID = WallID::Unsafe::granite;
+            }
+        });
+}
+
+void genGraniteCaveHiveQueen(Random &rnd, World &world)
+{
+    std::cout << "Smoothing granite\n";
+    int numCaves =
+        world.conf.graniteFreq * world.getWidth() * world.getHeight() / 2000000;
+    int scanDist = world.conf.graniteSize * 90;
+    for (int iter = 0; iter < numCaves; ++iter) {
+        auto [x, y] = findStoneCave(
+            std::midpoint(world.getUndergroundLevel(), world.getCavernLevel()),
+            world.getUnderworldLevel(),
+            rnd,
+            world,
+            30);
+        if (world.getTile(x, y).flag != 1) {
+            fillGraniteCaveHex(x, y, world);
+            for (int probes = world.conf.graniteSize * 20; probes > 0;
+                 --probes) {
+                int i = rnd.getInt(-scanDist, scanDist);
+                int j = rnd.getInt(-scanDist, scanDist);
+                if (world.getBiome(x + i, y + j).active == Biome::forest &&
+                    world.getTile(x + i, y + j).blockID == TileID::stone) {
+                    fillGraniteCaveHex(x + i, y + j, world);
+                }
+            }
+        }
+    }
+}
+
+```
+
+#### File: `./src/biomes/hiveQueen/GraniteCave.h`
+```
+#ifndef HIVEQUEEN_GRANITECAVE_H
+#define HIVEQUEEN_GRANITECAVE_H
+
+class World;
+class Random;
+
+void genGraniteCaveHiveQueen(Random &rnd, World &world);
+
+#endif // HIVEQUEEN_GRANITECAVE_H
+
+```
+
+#### File: `./src/biomes/hiveQueen/Hive.cpp`
+```
+#include "biomes/hiveQueen/Hive.h"
+
+#include "Config.h"
+#include "Random.h"
+#include "World.h"
+#include "biomes/Hive.h"
+#include "biomes/patches/Hive.h"
+
+void genHiveHiveQueen(Random &rnd, World &world)
+{
+    genHivePatches(rnd, world);
+    fillHive(
+        (0.5 + rnd.getDouble(-0.05, 0.05)) * world.getWidth(),
+        std::midpoint(
+            world.getSurfaceLevel(world.getWidth() / 2),
+            world.getUnderworldLevel()) +
+            rnd.getDouble(-0.05, 0.05) * world.getHeight(),
+        std::midpoint(world.conf.hiveSize, 1.0) *
+            std::midpoint<double>(world.getWidth(), 3.56 * world.getHeight()) /
+            rnd.getDouble(19, 22),
+        rnd,
+        world);
+}
+
+```
+
+#### File: `./src/biomes/hiveQueen/Hive.h`
+```
+#ifndef HIVEQUEEN_HIVE_H
+#define HIVEQUEEN_HIVE_H
+
+class World;
+class Random;
+
+void genHiveHiveQueen(Random &rnd, World &world);
+
+#endif // HIVEQUEEN_HIVE_H
+
+```
+
+#### File: `./src/biomes/hiveQueen/MarbleCave.cpp`
+```
+#include "biomes/hiveQueen/MarbleCave.h"
+
+#include "Config.h"
+#include "Random.h"
+#include "World.h"
+#include "biomes/BiomeUtil.h"
+#include "ids/WallID.h"
+#include <iostream>
+
+void fillMarbleCaveHex(int x, int y, Random &rnd, World &world)
+{
+    int lastX = -1;
+    int stalactiteLen = 0;
+    int stalacIter = 0;
+    iterateZone(
+        {x, y},
+        world,
+        [&world](Point pt) { return world.getTile(pt).flag != 1; },
+        [&](Point pt) {
+            if (pt.first != lastX) {
+                lastX = pt.first;
+                stalactiteLen = 0;
+                stalacIter = 0;
+            }
+            Tile &tile = world.getTile(pt);
+            bool nextTileIsEmpty =
+                world.getTile(pt.first, pt.second + 1).blockID == TileID::empty;
+            switch (tile.blockID) {
+            case TileID::dirt:
+            case TileID::stone:
+            case TileID::mud:
+                tile.blockID = TileID::marble;
+                if (nextTileIsEmpty) {
+                    stalactiteLen = std::max(
+                        0.0,
+                        16 *
+                            rnd.getFineNoise(4 * (pt.first), 100 * stalacIter));
+                    ++stalacIter;
+                }
+                break;
+            case TileID::clay:
+            case TileID::sand:
+                tile.blockID = TileID::smoothMarble;
+                break;
+            case TileID::empty:
+                if (nextTileIsEmpty && stalactiteLen > 0) {
+                    tile.blockID = TileID::marble;
+                    --stalactiteLen;
+                }
+            }
+            if (!world.conf.shattered || tile.wallID != WallID::empty) {
+                tile.wallID = WallID::Unsafe::marble;
+            }
+        });
+}
+
+void genMarbleCaveHiveQueen(Random &rnd, World &world)
+{
+    std::cout << "Excavating marble\n";
+    int numCaves =
+        world.conf.marbleFreq * world.getWidth() * world.getHeight() / 1200000;
+    for (int i = 0; i < numCaves; ++i) {
+        auto [x, y] = findStoneCave(
+            std::midpoint(world.getUndergroundLevel(), world.getCavernLevel()),
+            world.getUnderworldLevel(),
+            rnd,
+            world,
+            30);
+        if (world.getTile(x, y).flag != 1) {
+            fillMarbleCaveHex(x, y, rnd, world);
+        }
+    }
+}
+
+```
+
+#### File: `./src/biomes/hiveQueen/MarbleCave.h`
+```
+#ifndef HIVEQUEEN_MARBLECAVE_H
+#define HIVEQUEEN_MARBLECAVE_H
+
+class World;
+class Random;
+
+void genMarbleCaveHiveQueen(Random &rnd, World &world);
+
+#endif // HIVEQUEEN_MARBLECAVE_H
+
+```
+
 ### Folder: `./src/biomes/patches`
 
 #### File: `./src/biomes/patches/Base.cpp`
@@ -9862,7 +11510,6 @@ void genHardmodeOres(Random &rnd, World &world);
 #include "Config.h"
 #include "Random.h"
 #include "Util.h"
-#include "World.h"
 #include "biomes/Base.h"
 #include "biomes/BiomeUtil.h"
 #include "ids/WallID.h"
@@ -10417,10 +12064,13 @@ void genWorldBasePatches(Random &rnd, World &world)
 #ifndef PATCHES_BASE_H
 #define PATCHES_BASE_H
 
-class World;
+#include "World.h"
+
 class Random;
 
 void genWorldBasePatches(Random &rnd, World &world);
+BiomeData computeBiomeData(int x, int y, Random &rnd);
+void identifySurfaceBiomes(World &world);
 
 #endif // PATCHES_BASE_H
 
@@ -10564,6 +12214,7 @@ void genHivePatches(Random &rnd, World &world);
 ```
 #include "biomes/patches/Jungle.h"
 
+#include "Config.h"
 #include "Random.h"
 #include "World.h"
 #include "biomes/Jungle.h"
@@ -10574,14 +12225,21 @@ void genJunglePatches(Random &rnd, World &world)
     std::cout << "Generating jungle\n";
     rnd.shuffleNoise();
     int scanDist = rnd.getDouble(0.03, 0.035) * world.getWidth();
-    int minX = world.jungleCenter;
-    while (minX > 350 && minX > world.jungleCenter - scanDist &&
+    int jungleCenter = world.jungleCenter;
+    if (world.conf.hiveQueen) {
+        if (jungleCenter > world.getWidth() / 2) {
+            jungleCenter += 0.015 * world.getWidth();
+        } else {
+            jungleCenter -= 0.015 * world.getWidth();
+        }
+    }
+    int minX = jungleCenter;
+    while (minX > 350 && minX > jungleCenter - scanDist &&
            world.getBiome(minX, world.getSurfaceLevel(minX)).jungle > 0.8) {
         --minX;
     }
-    int maxX = world.jungleCenter;
-    while (maxX < world.getWidth() - 350 &&
-           maxX < world.jungleCenter + scanDist &&
+    int maxX = jungleCenter;
+    while (maxX < world.getWidth() - 350 && maxX < jungleCenter + scanDist &&
            world.getBiome(maxX + 25, world.getSurfaceLevel(maxX + 25)).jungle >
                0.8) {
         ++maxX;
@@ -10760,11 +12418,15 @@ void genShatteredLand(Random &rnd, World &world)
                             world.getSurfaceLevel(x - 1));
                     }
                 }
-            } else {
+            } else if (
+                foundSurface || tile.blockID != TileID::hive ||
+                y >= world.getUndergroundLevel()) {
+                short int flag = tile.flag;
                 tile = {};
+                tile.flag = flag;
             }
         }
-        if (world.conf.patches && x != 0) {
+        if ((world.conf.patches || world.conf.hiveQueen) && x != 0) {
             for (int y = 0.5 * world.getUndergroundLevel();
                  y < world.getUnderworldLevel();
                  ++y) {
@@ -11870,6 +13532,8 @@ enum {
     redStainedGlass = 92,
     multicoloredStainedGlass = 93,
     leadFence = 107,
+    hive = 108,
+    hay = 114,
     fancyGrayWallpaper = 126,
     richMahoganyFence = 139,
     whiteDynasty = 142,
@@ -11880,6 +13544,7 @@ enum {
     palmWood = 151,
     palmWoodFence = 152,
     amethystGemspark = 154,
+    honeyfall = 172,
     crimtaneBrick = 174,
     smoothMarble = 179,
     marble = 183,
@@ -11889,6 +13554,8 @@ enum {
     snow = 249,
     ice = 266,
     sandstone = 275,
+    lichenStone = 292,
+    leafyJungle = 293,
     ember = 296,
     wornStone = 300,
     stalactiteStone = 301,
@@ -12064,6 +13731,7 @@ inline std::array const underworld = {
 ```
 #include "map/DiegeticColor.h"
 
+#include "Config.h"
 #include "World.h"
 #include "ids/WallID.h"
 #include "vendor/frozen/map.h"
@@ -12410,7 +14078,7 @@ int getSectorColor(int i, int j, int scale, World &world)
           {TileID::borealWood, 0.07},
           {TileID::sandstoneBrick, 0.08},
           {TileID::emeraldStone, 0.032},
-          {TileID::honey, 0.08},
+          {TileID::honey, world.conf.hiveQueen ? 1.0 : 0.08},
           {TileID::slime, 0.08},
           {TileID::blueBrick, 0.08},
           {TileID::greenBrick, 0.08},
@@ -13194,6 +14862,7 @@ void genDesertTomb(Random &rnd, World &world);
 #include "Random.h"
 #include "Util.h"
 #include "World.h"
+#include "biomes/BiomeUtil.h"
 #include "ids/ItemID.h"
 #include "ids/Paint.h"
 #include "ids/Prefix.h"
@@ -13216,6 +14885,7 @@ struct DungeonTheme {
     int slabWall;
     int tiledWall;
     int paint;
+    int altPaint;
     Data::Variant furniture;
 
     void apply(int themeBrick, Random &rnd)
@@ -13255,6 +14925,7 @@ struct DungeonTheme {
                  Paint::deepViolet});
             furniture = Data::Variant::pinkDungeon;
         }
+        altPaint = paint;
     }
 };
 
@@ -14358,7 +16029,8 @@ private:
                 if (tile.wallID != WallID::empty &&
                     std::abs(rnd.getFineNoise(x + 2 * i, y + 2 * j)) <
                         0.1 - 0.1 * j / entry.getHeight()) {
-                    if (world.conf.doubleTrouble || world.conf.forTheWorthy) {
+                    if (world.conf.doubleTrouble || world.conf.hiveQueen ||
+                        world.conf.forTheWorthy) {
                         tile.wallID = WallID::Safe::mudstoneBrick;
                         tile.wallPaint = theme.paint;
                     } else {
@@ -14503,12 +16175,27 @@ private:
         }
         if (tile.wallID == theme.brickWall || tile.wallID == theme.slabWall ||
             tile.wallID == theme.tiledWall) {
-            tile.wallPaint = theme.paint;
+            tile.wallPaint = selectWallPaintAt(x, y);
             if (tile.blockID == TileID::pressurePlate ||
                 tile.blockID == TileID::trap) {
                 tile.blockPaint = theme.paint;
             }
         }
+    }
+
+    int selectWallPaintAt(int x, int y)
+    {
+        if (world.conf.hiveQueen) {
+            Point centroid = getHexCentroid(x, y, 8);
+            if (static_cast<int>(
+                    99999 *
+                    (1 + rnd.getFineNoise(centroid.first, centroid.second))) %
+                    11 <
+                4) {
+                return theme.altPaint;
+            }
+        }
+        return theme.paint;
     }
 
 public:
@@ -14519,6 +16206,20 @@ public:
             rnd.select(
                 {TileID::blueBrick, TileID::greenBrick, TileID::pinkBrick}),
             rnd);
+        if (world.conf.hiveQueen) {
+            theme.paint = rnd.select(
+                {Paint::yellow,
+                 Paint::orange,
+                 Paint::deepYellow,
+                 Paint::deepOrange});
+            while (theme.paint == theme.altPaint) {
+                theme.altPaint = rnd.select(
+                    {Paint::yellow,
+                     Paint::orange,
+                     Paint::deepYellow,
+                     Paint::deepOrange});
+            }
+        }
     }
 
     void gen(int dungeonCenter)
@@ -14615,7 +16316,8 @@ public:
                            b.second + shuffleY);
             });
         applyWallVariety(zones);
-        if (world.conf.doubleTrouble || world.conf.forTheWorthy) {
+        if (world.conf.doubleTrouble || world.conf.hiveQueen ||
+            world.conf.forTheWorthy) {
             applyPaint(dungeonCenter, dungeonWidth);
         }
     }
@@ -14968,6 +16670,28 @@ void genLake(Random &rnd, World &world)
         parallelFor(
             std::views::iota(0, world.getWidth()),
             [&rnd, &world](int x) { fillLavaHotzones(rnd, world, x); });
+    }
+    if (world.conf.hiveQueen) {
+        rnd.shuffleNoise();
+        parallelFor(
+            std::views::iota(0, world.getWidth()),
+            [&rnd, &world](int x) {
+                if (world.oceanCaveCenter < world.getWidth() / 2
+                        ? x > 350
+                        : x < world.getWidth() - 350) {
+                    for (int y = 0; y < world.getUnderworldLevel(); ++y) {
+                        if (world.getTile(x, y).liquid == Liquid::water &&
+                            rnd.getCoarseNoise(x, y) > 0.13) {
+                            convertLiquid(
+                                x,
+                                y,
+                                Liquid::water,
+                                Liquid::honey,
+                                world);
+                        }
+                    }
+                }
+            });
     }
     if (world.conf.forTheWorthy) {
         rnd.shuffleNoise();
@@ -17603,6 +19327,12 @@ inline constexpr auto trackClearTiles = frozen::make_set<int>({
     TileID::chlorophyteOre,
 });
 
+bool canTrackClearTile(Tile &tile)
+{
+    return trackClearTiles.contains(tile.blockID) ||
+           (tile.flag == 1 && tile.blockID == TileID::hive);
+}
+
 std::vector<Point>
 planTrackAt(int x, int y, double lengthScale, Random &rnd, World &world)
 {
@@ -17633,7 +19363,7 @@ planTrackAt(int x, int y, double lengthScale, Random &rnd, World &world)
                 [](Tile &tile) {
                     return !tile.guarded &&
                            (!tile.actuator || tile.blockID != TileID::sand) &&
-                           trackClearTiles.contains(tile.blockID);
+                           canTrackClearTile(tile);
                 }) ||
             !world.regionPasses(
                 pos.first,
@@ -17753,7 +19483,7 @@ void applyTrackSupport(int x, int y, World &world)
     int supFloor = scanWhileEmpty({x, y + 1}, {0, 1}, world).second;
     ++supFloor;
     if (supFloor - y < 4 || supFloor - y > 24 ||
-        !trackClearTiles.contains(world.getTile(x, supFloor).blockID)) {
+        !canTrackClearTile(world.getTile(x, supFloor))) {
         return;
     }
     tile.blockPaint = Paint::none;
@@ -18184,7 +19914,7 @@ bool tryPlaceWreck(int x, int y, TileBuffer &wreck, World &world)
             .second +
         1;
     constexpr auto clearableTiles = frozen::make_set<int>(
-        {TileID::empty, TileID::sand, TileID::coralstone});
+        {TileID::empty, TileID::sand, TileID::coralstone, TileID::honey});
     for (y += 1 - wreck.getHeight(); y <= surfaceLeft; ++y) {
         int jLeft = surfaceLeft - y;
         int jRight = surfaceRight - y;
@@ -18583,6 +20313,7 @@ void genPlants(const LocationBins &locations, Random &rnd, World &world)
                             growBamboo(x + 1, y, rnd, world);
                         }
                     } else if (
+                        world.getTile(x, y - 1).liquid == Liquid::none &&
                         world.getTile(x, y - 1).wallID == WallID::empty &&
                         rnd.getDouble(0, 1) < 0.2 * world.conf.trees) {
                         growTree(
@@ -20531,6 +22262,25 @@ void placeHomeAt(
             {{WallID::Safe::stone,
               rnd.select({WallID::Safe::mudstoneBrick, WallID::Safe::stone})}});
         break;
+    case Data::Variant::honey:
+        themeTiles.insert(
+            {{TileID::wood, TileID::honey},
+             {TileID::woodenBeam, TileID::richMahoganyBeam},
+             {TileID::grayBrick,
+              rnd.select({TileID::hive, TileID::richMahogany})},
+             {TileID::dirt, TileID::mud}});
+        themeWalls.insert(
+            {{WallID::Safe::wood, WallID::Safe::hay},
+             {WallID::Safe::planked,
+              rnd.select(
+                  {WallID::Safe::honeyfall, WallID::Safe::iridescentBrick})},
+             {WallID::Safe::stone,
+              rnd.select(
+                  {WallID::Safe::bamboo,
+                   WallID::Safe::largeBamboo,
+                   WallID::Safe::lichenStone,
+                   WallID::Safe::leafyJungle})}});
+        break;
     case Data::Variant::livingWood:
         themeTiles.insert(
             {{TileID::wood, TileID::livingWood}, {TileID::dirt, TileID::leaf}});
@@ -20600,11 +22350,13 @@ void placeHomeAt(
     }
     constexpr auto brickToWall = frozen::make_map<int, int>({
         {TileID::grayBrick, WallID::Safe::grayBrick},
+        {TileID::hive, WallID::Safe::hive},
         {TileID::iceBrick, WallID::Safe::iceBrick},
         {TileID::iridescentBrick, WallID::Safe::iridescentBrick},
         {TileID::mudstoneBrick, WallID::Safe::mudstoneBrick},
         {TileID::pearlstoneBrick, WallID::Safe::pearlstoneBrick},
         {TileID::redBrick, WallID::Safe::redBrick},
+        {TileID::richMahogany, WallID::Safe::richMahogany},
         {TileID::sandstoneBrick, WallID::Safe::sandstoneBrick},
         {TileID::snowBrick, WallID::Safe::snowBrick},
         {TileID::tinBrick, WallID::Safe::tinBrick},
@@ -20715,9 +22467,31 @@ int realSurfaceAt(int x, World &world, int prevY = -1)
     return scanWhileEmpty({x, minY}, {0, 1}, world).second + 1;
 }
 
+void clearSpawnHive(World &world)
+{
+    int x = world.getWidth() / 2;
+    int y = world.getSurfaceLevel(x);
+    int radius = 30;
+    for (int i = -radius; i < radius; ++i) {
+        for (int j = -radius; j < radius; ++j) {
+            if (y + j >= world.getSurfaceLevel(x + i)) {
+                break;
+            }
+            Tile &tile = world.getTile(x + i, y + j);
+            if (tile.flag == 1 && tile.blockID == TileID::hive &&
+                std::hypot(i, j) < radius) {
+                tile.blockID = TileID::empty;
+            }
+        }
+    }
+}
+
 void genStarterHome(Random &rnd, World &world)
 {
     std::cout << "Purchasing property\n";
+    if (world.conf.hiveQueen) {
+        clearSpawnHive(world);
+    }
     std::map<int, int> tileCounts;
     int x = world.getWidth() / 2;
     int y = realSurfaceAt(x, world);
@@ -20743,6 +22517,13 @@ void genStarterHome(Random &rnd, World &world)
             return tile.blockID != TileID::livingWood;
         })) {
         theme = Data::Variant::livingWood;
+    }
+    if ((theme == Data::Variant::forest || theme == Data::Variant::mahogany) &&
+        !world.regionPasses(x - 20, y - 2, 40, 8, [](Tile &tile) {
+            return tile.wallID != WallID::Unsafe::hive &&
+                   tile.liquid != Liquid::honey;
+        })) {
+        theme = Data::Variant::honey;
     }
     TileBuffer home =
         Data::getHome(rnd.select(Data::homes), world.getFramedTiles());
@@ -21421,7 +23202,10 @@ bool testTempleSelection(Point center, World &world)
     return isValid;
 }
 
-Point selectTempleCenter(Random &rnd, World &world)
+Point selectTempleCenter(
+    std::function<bool(Point, World &)> isValid,
+    Random &rnd,
+    World &world)
 {
     int minX = world.conf.patches
                    ? 350
@@ -21445,7 +23229,7 @@ Point selectTempleCenter(Random &rnd, World &world)
         int y = rnd.getInt(minY, world.getUnderworldLevel());
         if ((!world.conf.patches ||
              isInBiome(x, y, 200 - 0.19 * numTries, Biome::jungle, world)) &&
-            testTempleSelection({x, y}, world)) {
+            isValid({x, y}, world)) {
             return {x, y};
         }
     }
@@ -21456,6 +23240,15 @@ Point selectTempleCenter(Random &rnd, World &world)
 
 void clearTempleSurface(Point center, Random &rnd, World &world)
 {
+    clearTempleSurface(
+        center,
+        std::max<double>(world.conf.templeSize * 0.019 * world.getWidth(), 82),
+        rnd,
+        world);
+}
+
+void clearTempleSurface(Point center, int scanDist, Random &rnd, World &world)
+{
     rnd.shuffleNoise();
     constexpr auto clearableTiles = frozen::make_set<int>(
         {TileID::dirt,          TileID::mud,         TileID::jungleGrass,
@@ -21465,8 +23258,6 @@ void clearTempleSurface(Point center, Random &rnd, World &world)
          TileID::goldOre,       TileID::platinumOre, TileID::cobaltOre,
          TileID::palladiumOre,  TileID::mythrilOre,  TileID::orichalcumOre,
          TileID::adamantiteOre, TileID::titaniumOre, TileID::chlorophyteOre});
-    int scanDist =
-        std::max<double>(world.conf.templeSize * 0.019 * world.getWidth(), 82);
     for (int x = center.first - scanDist; x < center.first + scanDist; ++x) {
         for (int y = center.second - scanDist; y < center.second + scanDist;
              ++y) {
@@ -21638,6 +23429,16 @@ addTempleTreasures(Point center, int numRooms, Random &rnd, World &world)
         }
         return true;
     });
+    addTempleTreasures(locations, numRooms, rnd, world);
+    return locations;
+}
+
+void addTempleTreasures(
+    std::vector<Point> &locations,
+    int numRooms,
+    Random &rnd,
+    World &world)
+{
     int numChests = world.conf.chests * numRooms / 17.5;
     std::vector<Point> usedLocations;
     while (numChests > 0) {
@@ -21670,7 +23471,6 @@ addTempleTreasures(Point center, int numRooms, Random &rnd, World &world)
         world.placeFramedTile(x, y - 3, TileID::statue, Variant::lihzahrd);
         --numStatues;
     }
-    return locations;
 }
 
 void addWallTrap(
@@ -21740,10 +23540,15 @@ void addCeilingTrap(Point pos, Variant trapType, World &world)
     world.placeFramedTile(x, y, TileID::pressurePlate, Variant::lihzahrd);
 }
 
-void addTraps(std::vector<Point> locations, Random &rnd, World &world)
+void addTempleTraps(
+    std::vector<Point> &locations,
+    int freqCtrl,
+    Random &rnd,
+    World &world)
 {
     for (auto [x, y] : locations) {
-        switch (static_cast<int>(99999 * (1 + rnd.getFineNoise(x, y))) % 75) {
+        switch (static_cast<int>(99999 * (1 + rnd.getFineNoise(x, y))) %
+                freqCtrl) {
         case 0:
             if (canPlaceTempleTreasureAt(x, y, world)) {
                 world.placeFramedTile(x, y - 2, TileID::TNTBarrel);
@@ -21779,7 +23584,7 @@ void addTraps(std::vector<Point> locations, Random &rnd, World &world)
     }
 }
 
-void addSpikesAt(Point pos, Random &rnd, World &world)
+void addTempleSpikesAt(Point pos, Random &rnd, World &world)
 {
     if (static_cast<int>(
             99999 * (1 + rnd.getFineNoise(pos.first, pos.second))) %
@@ -21817,7 +23622,7 @@ void addSpikes(Point center, Random &rnd, World &world)
         if (world.regionPasses(x - 1, y - 1, 3, 3, [](Tile &tile) {
                 return tile.blockID == TileID::empty;
             })) {
-            addSpikesAt({x, y}, rnd, world);
+            addTempleSpikesAt({x, y}, rnd, world);
         }
         return true;
     });
@@ -21846,7 +23651,7 @@ void genTemple(Random &rnd, World &world)
         return;
     }
     std::cout << "Training acolytes\n";
-    Point center = selectTempleCenter(rnd, world);
+    Point center = selectTempleCenter(testTempleSelection, rnd, world);
     if (center.first < 100) {
         return;
     }
@@ -21958,7 +23763,7 @@ void genTemple(Random &rnd, World &world)
         return world.getTile(pt).blockID == TileID::platform;
     });
     std::shuffle(flatLocations.begin(), flatLocations.end(), rnd.getPRNG());
-    addTraps(flatLocations, rnd, world);
+    addTempleTraps(flatLocations, 75, rnd, world);
     addSpikes(center, rnd, world);
     if (world.conf.forTheWorthy) {
         paintTemple(center, Paint::deepGreen, world);
@@ -21974,10 +23779,32 @@ void genTemple(Random &rnd, World &world)
 #ifndef TEMPLE_H
 #define TEMPLE_H
 
+#include <functional>
+#include <vector>
+
 class World;
 class Random;
 
+typedef std::pair<int, int> Point;
+
 void genTemple(Random &rnd, World &world);
+Point selectTempleCenter(
+    std::function<bool(Point, World &)> isValid,
+    Random &rnd,
+    World &world);
+void clearTempleSurface(Point center, int scanDist, Random &rnd, World &world);
+bool canPlaceTempleTreasureAt(int x, int y, World &world);
+void addTempleTreasures(
+    std::vector<Point> &locations,
+    int numRooms,
+    Random &rnd,
+    World &world);
+void addTempleTraps(
+    std::vector<Point> &locations,
+    int freqCtrl,
+    Random &rnd,
+    World &world);
+void addTempleSpikesAt(Point pos, Random &rnd, World &world);
 
 #endif // TEMPLE_H
 
@@ -22996,7 +24823,7 @@ bool isPlacementCandidate(int x, int y, World &world)
         return isSolidBlock(tile.blockID) && tile.slope == Slope::none &&
                !tile.actuated && !placementAvoidTiles.contains(tile.blockID) &&
                ((tile.blockID != TileID::aetherium &&
-                 tile.blockID != TileID::pearlstone) ||
+                 tile.blockID != TileID::pearlstone && tile.flag != 1) ||
                 y > world.getSurfaceLevel(x));
     };
     return isFloorTile(world.getTile(x, y)) &&
@@ -26732,6 +28559,7 @@ inline constexpr auto frameDetail =
         {{TileID::candelabra, Variant::ashWood}, {0, 1512}},
         {{TileID::candelabra, Variant::boreal}, {0, 720}},
         {{TileID::candelabra, Variant::forest}, {0, 0}},
+        {{TileID::candelabra, Variant::honey}, {0, 144}},
         {{TileID::candelabra, Variant::livingWood}, {0, 468}},
         {{TileID::candelabra, Variant::mahogany}, {0, 252}},
         {{TileID::candelabra, Variant::marble}, {0, 1080}},
@@ -26745,6 +28573,7 @@ inline constexpr auto frameDetail =
         {{TileID::candle, Variant::ashWood}, {0, 902}},
         {{TileID::candle, Variant::boreal}, {0, 440}},
         {{TileID::candle, Variant::forest}, {0, 0}},
+        {{TileID::candle, Variant::honey}, {0, 484}},
         {{TileID::candle, Variant::livingWood}, {0, 308}},
         {{TileID::candle, Variant::mahogany}, {0, 198}},
         {{TileID::candle, Variant::marble}, {0, 638}},
@@ -26758,6 +28587,7 @@ inline constexpr auto frameDetail =
         {{TileID::chair, Variant::ashWood}, {0, 1880}},
         {{TileID::chair, Variant::boreal}, {0, 1200}},
         {{TileID::chair, Variant::forest}, {0, 0}},
+        {{TileID::chair, Variant::honey}, {0, 880}},
         {{TileID::chair, Variant::livingWood}, {0, 200}},
         {{TileID::chair, Variant::mahogany}, {0, 120}},
         {{TileID::chair, Variant::marble}, {0, 1400}},
@@ -26771,6 +28601,7 @@ inline constexpr auto frameDetail =
         {{TileID::chandelier, Variant::ashWood}, {108, 594}},
         {{TileID::chandelier, Variant::boreal}, {0, 1350}},
         {{TileID::chandelier, Variant::forest}, {0, 0}},
+        {{TileID::chandelier, Variant::honey}, {0, 540}},
         {{TileID::chandelier, Variant::livingWood}, {0, 972}},
         {{TileID::chandelier, Variant::mahogany}, {0, 648}},
         {{TileID::chandelier, Variant::marble}, {0, 1944}},
@@ -26783,6 +28614,7 @@ inline constexpr auto frameDetail =
         {{TileID::chest, Variant::ashWood}, {576, 0}},
         {{TileID::chest, Variant::boreal}, {1188, 0}},
         {{TileID::chest, Variant::forest}, {0, 0}},
+        {{TileID::chest, Variant::honey}, {1044, 0}},
         {{TileID::chest, Variant::livingWood}, {432, 0}},
         {{TileID::chest, Variant::mahogany}, {288, 0}},
         {{TileID::chest, Variant::marble}, {1836, 0}},
@@ -26800,6 +28632,7 @@ inline constexpr auto frameDetail =
         {{TileID::door, Variant::ashWood}, {54, 648}},
         {{TileID::door, Variant::boreal}, {0, 1620}},
         {{TileID::door, Variant::forest}, {0, 0}},
+        {{TileID::door, Variant::honey}, {0, 1188}},
         {{TileID::door, Variant::livingWood}, {0, 378}},
         {{TileID::door, Variant::mahogany}, {0, 108}},
         {{TileID::door, Variant::marble}, {0, 1890}},
@@ -26819,6 +28652,7 @@ inline constexpr auto frameDetail =
         {{TileID::lamp, Variant::ashWood}, {0, 2268}},
         {{TileID::lamp, Variant::boreal}, {0, 1080}},
         {{TileID::lamp, Variant::forest}, {0, 216}},
+        {{TileID::lamp, Variant::honey}, {0, 594}},
         {{TileID::lamp, Variant::livingWood}, {0, 702}},
         {{TileID::lamp, Variant::mahogany}, {0, 324}},
         {{TileID::lamp, Variant::marble}, {0, 1620}},
@@ -26832,6 +28666,7 @@ inline constexpr auto frameDetail =
         {{TileID::lantern, Variant::ashWood}, {0, 1728}},
         {{TileID::lantern, Variant::boreal}, {0, 1044}},
         {{TileID::lantern, Variant::forest}, {0, 108}},
+        {{TileID::lantern, Variant::honey}, {0, 468}},
         {{TileID::lantern, Variant::livingWood}, {0, 792}},
         {{TileID::lantern, Variant::mahogany}, {0, 576}},
         {{TileID::lantern, Variant::marble}, {0, 1296}},
@@ -26851,6 +28686,7 @@ inline constexpr auto frameDetail =
         {{TileID::platform, Variant::ashWood}, {0, 846}},
         {{TileID::platform, Variant::boreal}, {0, 342}},
         {{TileID::platform, Variant::forest}, {0, 0}},
+        {{TileID::platform, Variant::honey}, {0, 432}},
         {{TileID::platform, Variant::livingWood}, {0, 414}},
         {{TileID::platform, Variant::mahogany}, {0, 36}},
         {{TileID::platform, Variant::marble}, {0, 522}},
@@ -26875,6 +28711,7 @@ inline constexpr auto frameDetail =
         {{TileID::table, Variant::ashWood}, {594, 0}},
         {{TileID::table, Variant::boreal}, {1512, 0}},
         {{TileID::table, Variant::forest}, {0, 0}},
+        {{TileID::table, Variant::honey}, {1026, 0}},
         {{TileID::table, Variant::livingWood}, {324, 0}},
         {{TileID::table, Variant::mahogany}, {108, 0}},
         {{TileID::table, Variant::marble}, {1836, 0}},
@@ -26971,6 +28808,7 @@ enum class Variant {
     ashWood,
     boreal,
     forest,
+    honey,
     livingWood,
     mahogany,
     marble,
@@ -31802,6 +33640,373 @@ class World;
 void applyHardmodeLoot(World &world);
 
 #endif // HARDMODE_LOOTRULES_H
+
+```
+
+### Folder: `./src/structures/hiveQueen`
+
+#### File: `./src/structures/hiveQueen/Temple.cpp`
+```
+#include "structures/hiveQueen/Temple.h"
+
+#include "Config.h"
+#include "Random.h"
+#include "World.h"
+#include "biomes/BiomeUtil.h"
+#include "ids/Paint.h"
+#include "ids/WallID.h"
+#include "structures/StructureUtil.h"
+#include "structures/Temple.h"
+#include "vendor/frozen/set.h"
+#include <iostream>
+#include <map>
+#include <set>
+
+class HiveTemple
+{
+private:
+    Random &rnd;
+    World &world;
+    double size;
+    int roomSize;
+    std::set<Point> connections;
+
+    std::vector<Point> neighborCentroids(Point pt)
+    {
+        std::vector<Point> neighbors;
+        for (auto [i, j] :
+             {std::pair{0, -1.155 * roomSize},
+              {0, 1.155 * roomSize},
+              {-roomSize, -0.578 * roomSize},
+              {-roomSize, 0.578 * roomSize},
+              {roomSize, -0.578 * roomSize},
+              {roomSize, 0.578 * roomSize}}) {
+            neighbors.push_back(
+                getHexCentroid(pt.first + i, pt.second + j, roomSize));
+        }
+        return neighbors;
+    }
+
+    void makeRoom(Point centroid)
+    {
+        std::map<Point, int> visitCount;
+        iterateZone(
+            centroid,
+            world,
+            [this, centroid](Point pt) {
+                return getHexCentroid(pt, roomSize) == centroid;
+            },
+            [this, &visitCount](Point pt) {
+                Tile &tile = world.getTile(pt);
+                tile.blockID = TileID::lihzahrdBrick;
+                tile.blockPaint = Paint::none;
+                tile.wallID = WallID::Unsafe::lihzahrdBrick;
+                for (int i = -2; i < 3; ++i) {
+                    for (int j = -2; j < 3; ++j) {
+                        Point probe = addPts(pt, {i, j});
+                        visitCount[probe] += 1;
+                        if (visitCount[probe] == 25) {
+                            world.getTile(probe).blockID = TileID::empty;
+                        }
+                    }
+                }
+            });
+    }
+
+    bool hasHallway(Point a, Point b)
+    {
+        return connections.contains(addPts(a, b));
+    }
+
+    void makeHallway(Point a, Point b)
+    {
+        connections.insert(addPts(a, b));
+        if (a.second > b.second) {
+            std::swap(a, b);
+        }
+        double slope =
+            static_cast<double>(b.first - a.first) / (b.second - a.second);
+        double scanDist = 2.5 * (1 + std::abs(slope));
+        for (int y = a.second; y <= b.second; ++y) {
+            double centerX = slope * (y - a.second) + a.first;
+            for (int x = std::round(centerX - scanDist); x < centerX + scanDist;
+                 ++x) {
+                world.getTile(x, y).blockID = TileID::empty;
+            }
+        }
+    }
+
+    void genMaze(Point center)
+    {
+        std::vector<Point> coreRing = neighborCentroids(center);
+        for (Point pt : coreRing) {
+            makeRoom(pt);
+        }
+        double coreSize = 1 + 1.22 * roomSize;
+        for (int i = -coreSize; i < coreSize; ++i) {
+            for (int j = -coreSize; j < coreSize; ++j) {
+                if (std::hypot(i, j) < coreSize) {
+                    Tile &tile =
+                        world.getTile(center.first + i, center.second + j);
+                    tile.blockID = TileID::empty;
+                    tile.blockPaint = Paint::none;
+                    tile.wallID = WallID::Unsafe::lihzahrdBrick;
+                }
+            }
+        }
+        std::set<Point> core(coreRing.begin(), coreRing.end());
+        core.insert(center);
+        Point agent = rnd.select(coreRing);
+        std::set<Point> connectedRooms{agent};
+        std::vector<Point> junctions;
+        double threshold = size - roomSize;
+        while (true) {
+            std::vector<Point> choices;
+            for (Point candidate : neighborCentroids(agent)) {
+                if (std::hypot(
+                        candidate.first - center.first,
+                        candidate.second - center.second) < threshold &&
+                    !core.contains(candidate) &&
+                    (!connectedRooms.contains(candidate) ||
+                     hasHallway(agent, candidate))) {
+                    choices.push_back(candidate);
+                }
+            }
+            if (choices.size() == 1 && connectedRooms.contains(choices[0])) {
+                if (junctions.empty()) {
+                    break;
+                }
+                agent = junctions.back();
+                junctions.pop_back();
+            } else {
+                for (Point choice : choices) {
+                    if (!connectedRooms.contains(choice)) {
+                        junctions.push_back(agent);
+                        break;
+                    }
+                }
+                Point next = rnd.select(choices);
+                if (!connectedRooms.contains(next)) {
+                    makeRoom(next);
+                    makeHallway(agent, next);
+                    connectedRooms.insert(next);
+                }
+                agent = next;
+            }
+        }
+        std::vector<Point> border;
+        for (int x = center.first - size; x < center.first + size; ++x) {
+            for (int y = center.second - size; y < center.second + size; ++y) {
+                if (world.getTile(x, y).wallID !=
+                        WallID::Unsafe::lihzahrdBrick &&
+                    !world.regionPasses(x - 2, y - 2, 5, 5, [](Tile &tile) {
+                        return tile.wallID != WallID::Unsafe::lihzahrdBrick;
+                    })) {
+                    border.emplace_back(x, y);
+                }
+            }
+        }
+        for (Point pt : border) {
+            Tile &tile = world.getTile(pt);
+            tile.blockID = TileID::lihzahrdBrick;
+            tile.blockPaint = Paint::none;
+            tile.wallID = WallID::Unsafe::lihzahrdBrick;
+        }
+    }
+
+    void addEntries(Point center)
+    {
+        int x = center.first - size;
+        int y = center.second;
+        while (world.getTile(x, y).blockID != TileID::lihzahrdBrick) {
+            ++x;
+        }
+        std::tie(x, y) = getHexCentroid(x + roomSize / 2, y, roomSize);
+        clearTempleSurface(
+            {x - roomSize / 2, y - roomSize / 2},
+            1.1 * roomSize,
+            rnd,
+            world);
+        for (bool inTemple = true; inTemple; --x) {
+            inTemple = false;
+            for (int j = -1; j < 2; ++j) {
+                Tile &tile = world.getTile(x, y + j);
+                if (tile.wallID == WallID::Unsafe::lihzahrdBrick) {
+                    tile.blockID = TileID::empty;
+                    inTemple = true;
+                }
+            }
+        }
+        world.placeFramedTile(x + 2, y - 1, TileID::door, Variant::lihzahrd);
+        world.placeFramedTile(x + 4, y, TileID::pot, Variant::lihzahrd);
+
+        x = 2 * center.first - x;
+        while (world.getTile(x, y).blockID != TileID::lihzahrdBrick) {
+            --x;
+        }
+        std::tie(x, y) = getHexCentroid(x - roomSize / 2, y, roomSize);
+        clearTempleSurface(
+            {x + roomSize / 2, y - roomSize / 2},
+            1.1 * roomSize,
+            rnd,
+            world);
+        for (bool inTemple = true; inTemple; ++x) {
+            inTemple = false;
+            for (int j = -1; j < 2; ++j) {
+                Tile &tile = world.getTile(x, y + j);
+                if (tile.wallID == WallID::Unsafe::lihzahrdBrick) {
+                    tile.blockID = TileID::empty;
+                    inTemple = true;
+                }
+            }
+        }
+        world.placeFramedTile(x - 2, y - 1, TileID::door, Variant::lihzahrd);
+        world.placeFramedTile(x - 5, y, TileID::pot, Variant::lihzahrd);
+    }
+
+    void placeAltar(Point center)
+    {
+        int altarLeft = scanWhileEmpty(
+                            {center.first - roomSize, center.second},
+                            {0, 1},
+                            world)
+                            .second;
+        int altarCenter = scanWhileEmpty(center, {0, 1}, world).second;
+        world.placeFramedTile(
+            center.first - 1 - (altarLeft < altarCenter ? roomSize : 0),
+            std::min(altarLeft, altarCenter) - 1,
+            TileID::lihzahrdAltar);
+    }
+
+    std::vector<Point> placeTreasures(Point center)
+    {
+        std::vector<Point> locations;
+        for (int x = center.first - size; x < center.first + size; ++x) {
+            for (int y = center.second - size; y < center.second + size; ++y) {
+                if (canPlaceTempleTreasureAt(x, y, world)) {
+                    locations.emplace_back(x, y);
+                }
+            }
+        }
+        addTempleTreasures(locations, size * size / 127.7 + 20, rnd, world);
+        return locations;
+    }
+
+    void addSpikes(Point center)
+    {
+        for (int x = center.first - size; x < center.first + size; ++x) {
+            for (int y = center.second - size; y < center.second + size; ++y) {
+                if (world.regionPasses(x - 1, y - 1, 3, 3, [](Tile &tile) {
+                        return tile.blockID == TileID::empty &&
+                               tile.wallID == WallID::Unsafe::lihzahrdBrick;
+                    })) {
+                    addTempleSpikesAt({x, y}, rnd, world);
+                }
+            }
+        }
+    }
+
+    void applyPaint(Point center, int paint)
+    {
+        for (int x = center.first - size; x < center.first + size; ++x) {
+            for (int y = center.second - size; y < center.second + size; ++y) {
+                Tile &tile = world.getTile(x, y);
+                if (tile.wallID == WallID::Unsafe::lihzahrdBrick) {
+                    if (tile.blockID == TileID::lihzahrdBrick ||
+                        tile.blockID == TileID::pressurePlate ||
+                        tile.blockID == TileID::trap) {
+                        tile.blockPaint = paint;
+                    }
+                    tile.wallPaint = paint;
+                }
+            }
+        }
+    }
+
+public:
+    HiveTemple(double s, Random &r, World &w)
+        : rnd(r), world(w), size(s), roomSize(20)
+    {
+    }
+
+    void gen(Point center)
+    {
+        center = getHexCentroid(center, roomSize);
+        genMaze(center);
+        addEntries(center);
+        placeAltar(center);
+        std::vector<Point> flatLocations = placeTreasures(center);
+        std::shuffle(flatLocations.begin(), flatLocations.end(), rnd.getPRNG());
+        addTempleTraps(flatLocations, 45, rnd, world);
+        addSpikes(center);
+        applyPaint(
+            center,
+            rnd.select(
+                {Paint::yellow,
+                 Paint::orange,
+                 Paint::deepYellow,
+                 Paint::deepOrange}));
+    }
+};
+
+void genTempleHiveQueen(Random &rnd, World &world)
+{
+    if (world.conf.templeSize < 0.01) {
+        return;
+    }
+    std::cout << "Training acolytes\n";
+    rnd.shuffleNoise();
+    double size = std::max(
+        world.conf.templeSize * 0.022 *
+            std::midpoint<double>(world.getWidth(), 3.55 * world.getHeight()),
+        95.0);
+    Point center = selectTempleCenter(
+        [scanDist = 0.95 * size](Point center, World &world) {
+            constexpr auto avoidBlocks = frozen::make_set<int>({
+                TileID::aetherium,
+                TileID::ash,
+                TileID::blueBrick,
+                TileID::corruptJungleGrass,
+                TileID::crimsonJungleGrass,
+                TileID::granite,
+                TileID::greenBrick,
+                TileID::hive,
+                TileID::marble,
+                TileID::mushroomGrass,
+                TileID::pinkBrick,
+            });
+            return world.regionPasses(
+                center.first - scanDist,
+                center.second - scanDist,
+                2 * scanDist,
+                2 * scanDist,
+                [&avoidBlocks](Tile &tile) {
+                    return !avoidBlocks.contains(tile.blockID) ||
+                           (tile.blockID == TileID::hive && tile.flag == 1);
+                });
+        },
+        rnd,
+        world);
+    if (center.first < 100) {
+        return;
+    }
+    HiveTemple structure(size, rnd, world);
+    structure.gen(center);
+}
+
+```
+
+#### File: `./src/structures/hiveQueen/Temple.h`
+```
+#ifndef HIVEQUEEN_TEMPLE_H
+#define HIVEQUEEN_TEMPLE_H
+
+class World;
+class Random;
+
+void genTempleHiveQueen(Random &rnd, World &world);
+
+#endif // HIVEQUEEN_TEMPLE_H
 
 ```
 
