@@ -1,4 +1,4 @@
-name: Reset Repository and Generate Documentation
+name: Generate and Replace with Documentation
 on:
   workflow_dispatch:
   push:
@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  build-and-document:
+  build-docs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -15,102 +15,109 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: 1. Clean repository, keeping only critical files
+      - name: 1. Unpack source archives into temporary folders
         run: |
-          echo "Clearing repository, preserving .git, .github, and the zip file..."
-          find . -mindepth 1 ! -path './.git*' ! -path './.github*' ! -path './terra-awg-main.zip' -exec rm -rf {} +
-          echo "Repository cleared."
+          mkdir -p temp_opencode temp_claude
+          
+          echo "Unpacking opencode-main.zip..."
+          unzip -o opencode-main.zip -d temp_opencode
+          rsync -a temp_opencode/opencode-main/ temp_opencode/
+          rm -rf temp_opencode/opencode-main
+          
+          echo "Unpacking claude-code-router-main.zip..."
+          unzip -o claude-code-router-main.zip -d temp_claude
+          rsync -a temp_claude/claude-code-router-main/ temp_claude/
+          rm -rf temp_claude/claude-code-router-main
 
-      - name: 2. Unpack and relocate project from zip
-        run: |
-          unzip -o terra-awg-main.zip
-          rsync -a --remove-source-files terra-awg-main/ .
-          rm -rf terra-awg-main
-          rm terra-awg-main.zip
-          echo "Project unpacked and moved to root."
-
-      - name: 3. Install tree utility for file listing
+      - name: 2. Install tree utility
         run: sudo apt-get update && sudo apt-get install -y tree
 
-      - name: 4. Generate Organized Documentation
+      - name: 3. Generate Documentation for OpenCode
         run: |
-          OUTPUT_FILE="project_documentation.md"
+          cd temp_opencode
+          OUTPUT_FILE="../opencode_documentation.md"
           
-          echo "# Project Documentation" > $OUTPUT_FILE
+          echo "# Project Documentation: OpenCode" > $OUTPUT_FILE
           echo "" >> $OUTPUT_FILE
 
-          # Part A: Append README.md
           if [ -f "README.md" ]; then
-            echo "## 1. README" >> $OUTPUT_FILE
-            echo '```markdown' >> $OUTPUT_FILE
-            cat README.md >> $OUTPUT_FILE
-            echo "" >> $OUTPUT_FILE
-            echo '```' >> $OUTPUT_FILE
-            echo "" >> $OUTPUT_FILE
+            echo "## 1. README" >> $OUTPUT_FILE && cat README.md >> $OUTPUT_FILE
           fi
-
-          # Part B: Append Design.md
           if [ -f "Design.md" ]; then
-            echo "## 2. Design Document" >> $OUTPUT_FILE
-            echo '```markdown' >> $OUTPUT_FILE
-            cat Design.md >> $OUTPUT_FILE
-            echo "" >> $OUTPUT_FILE
-            echo '```' >> $OUTPUT_FILE
-            echo "" >> $OUTPUT_FILE
+            echo "## 2. Design Document" >> $OUTPUT_FILE && cat Design.md >> $OUTPUT_FILE
           fi
 
-          # Part C: Generate the visual file tree with exclusions
           echo "## 3. Project File Tree" >> $OUTPUT_FILE
           echo '```' >> $OUTPUT_FILE
-          tree -I ".git|.github|.agent.md|plan.txt|Progress.txt|${OUTPUT_FILE}" >> $OUTPUT_FILE
+          tree -I ".git|.github|.agent.md|plan.txt|Progress.txt" >> $OUTPUT_FILE
           echo '```' >> $OUTPUT_FILE
-          echo "" >> $OUTPUT_FILE
-
-          # Part D: Append source files in file tree order with exclusions
-          echo "## 4. Source Files" >> $OUTPUT_FILE
-          echo "" >> $OUTPUT_FILE
           
+          echo "## 4. Source Files" >> $OUTPUT_FILE
           current_dir=""
           find . -type d -name ".git" -prune -o -type d -name ".github" -prune -o -print | sort | while read -r p; do
             if [ -d "$p" ]; then
-              find "$p" -maxdepth 1 -type f \
-                -not -name "README.md" \
-                -not -name "Design.md" \
-                -not -name ".agent.md" \
-                -not -name "plan.txt" \
-                -not -name "Progress.txt" \
-                -not -name "$OUTPUT_FILE" \
-                | sort | while read -r file; do
-                  if file -b --mime-type "$file" | grep -q "text"; then
-                    file_dir=$(dirname "$file")
-                    if [ "$file_dir" != "$current_dir" ]; then
-                      current_dir="$file_dir"
-                      echo "### Folder: \`$current_dir\`" >> $OUTPUT_FILE
-                      echo "" >> $OUTPUT_FILE
-                    fi
-                    
-                    echo "#### File: \`$file\`" >> $OUTPUT_FILE
-                    echo '```' >> $OUTPUT_FILE
-                    cat "$file" >> $OUTPUT_FILE
-                    echo "" >> $OUTPUT_FILE
-                    echo '```' >> $OUTPUT_FILE
-                    echo "" >> $OUTPUT_FILE
-                  fi
-                done
-            fi
-          done
+              find "$p" -maxdepth 1 -type f -not -name "README.md" -not -name "Design.md" -not -name ".agent.md" -not -name "plan.txt" -not -name "Progress.txt" | sort | while read -r file; do
+                if file -b --mime-type "$file" | grep -q "text"; then
+                  file_dir=$(dirname "$file"); [ "$file_dir" != "$current_dir" ] && current_dir="$file_dir" && echo "### Folder: \`$current_dir\`" >> $OUTPUT_FILE
+                  echo "#### File: \`$file\`" >> $OUTPUT_FILE; echo '```' >> $OUTPUT_FILE; cat "$file" >> $OUTPUT_FILE; echo '```' >> $OUTPUT_FILE;
+                fi
+              done; fi; done
+          cd ..
 
-      - name: 5. Commit only the new documentation file
+      - name: 4. Generate Documentation for Claude Code Router
+        run: |
+          cd temp_claude
+          OUTPUT_FILE="../claude_code_router_documentation.md"
+          
+          echo "# Project Documentation: Claude Code Router" > $OUTPUT_FILE
+          echo "" >> $OUTPUT_FILE
+          
+          if [ -f "README.md" ]; then
+            echo "## 1. README" >> $OUTPUT_FILE && cat README.md >> $OUTPUT_FILE
+          fi
+          if [ -f "Design.md" ]; then
+            echo "## 2. Design Document" >> $OUTPUT_FILE && cat Design.md >> $OUTPUT_FILE
+          fi
+
+          echo "## 3. Project File Tree" >> $OUTPUT_FILE
+          echo '```' >> $OUTPUT_FILE
+          tree -I ".git|.github|.agent.md|plan.txt|Progress.txt" >> $OUTPUT_FILE
+          echo '```' >> $OUTPUT_FILE
+          
+          echo "## 4. Source Files" >> $OUTPUT_FILE
+          current_dir=""
+          find . -type d -name ".git" -prune -o -type d -name ".github" -prune -o -print | sort | while read -r p; do
+            if [ -d "$p" ]; then
+              find "$p" -maxdepth 1 -type f -not -name "README.md" -not -name "Design.md" -not -name ".agent.md" -not -name "plan.txt" -not -name "Progress.txt" | sort | while read -r file; do
+                if file -b --mime-type "$file" | grep -q "text"; then
+                  file_dir=$(dirname "$file"); [ "$file_dir" != "$current_dir" ] && current_dir="$file_dir" && echo "### Folder: \`$current_dir\`" >> $OUTPUT_FILE
+                  echo "#### File: \`$file\`" >> $OUTPUT_FILE; echo '```' >> $OUTPUT_FILE; cat "$file" >> $OUTPUT_FILE; echo '```' >> $OUTPUT_FILE;
+                fi
+              done; fi; done
+          cd ..
+
+      - name: 5. DELETE EVERYTHING except the new documentation files
+        run: |
+          echo "Performing final cleanup. Only documentation files will remain."
+          find . -mindepth 1 \
+            ! -path './.git*' \
+            ! -path './.github*' \
+            ! -path './opencode_documentation.md' \
+            ! -path './claude_code_router_documentation.md' \
+            -exec rm -rf {} +
+          echo "Cleanup complete."
+          ls -la
+
+      - name: 6. Commit the final documentation
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Add only the single, specific documentation file to the commit
-          git add project_documentation.md
+          git add .
           
           if [ -n "$(git status --porcelain)" ]; then
-            git commit -m "docs: Reset and generate project documentation"
+            git commit -m "docs: Generate and replace repository with project documentation"
             git push
           else
-            echo "No new documentation file was created to commit."
+            echo "No changes detected to commit."
           fi
