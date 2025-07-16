@@ -1,20 +1,12 @@
-name: Process and Document Zip Archives
+name: Simple Documentation Generator
 on:
   workflow_dispatch:
-    inputs:
-      zip_files:
-        description: 'Zip files to process (space-separated)'
-        required: true
-        type: string
-        default: 'opencode-main.zip claude-code-router-main.zip'
-      overwrite_repository:
-        description: 'If true, delete all other files and replace the repo with the generated docs.'
-        required: true
-        type: boolean
-        default: true
+  push:
+    branches:
+      - main
 
 jobs:
-  build-and-document:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -23,87 +15,47 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: 1. Install necessary utilities
-        run: sudo apt-get update && sudo apt-get install -y tree
-
-      - name: 2. Process each specified zip file
+      - name: Unpack Archive
         run: |
-          mkdir -p final_docs
-          for zip_file in ${{ github.event.inputs.zip_files }}; do
-            if [ ! -f "$zip_file" ]; then
-              echo "⚠️ Warning: Skipping '$zip_file' because it was not found."
-              continue
-            fi
-            
-            echo "--- Processing: $zip_file ---"
-            basename="${zip_file%.zip}"
-            temp_dir="temp_${basename}"
-            output_file="final_docs/${basename}_documentation.md"
-            
-            mkdir -p "$temp_dir"
-            unzip -o "$zip_file" -d "$temp_dir"
-            rsync -a "${temp_dir}/${basename}/" "$temp_dir/"
-            rm -rf "${temp_dir}/${basename}"
-            
-            echo "# Project Documentation: ${basename}" > "$output_file"
-            [ -f "${temp_dir}/README.md" ] && { echo "## 1. README" >> "$output_file"; echo '```markdown' >> "$output_file"; cat "${temp_dir}/README.md" >> "$output_file"; echo '```' >> "$output_file"; }
-            [ -f "${temp_dir}/Design.md" ] && { echo "## 2. Design Document" >> "$output_file"; echo '```markdown' >> "$output_file"; cat "${temp_dir}/Design.md" >> "$output_file"; echo '```' >> "$output_file"; }
+          unzip -o claude-code-router-main.zip
 
-            echo "## 3. Project File Tree" >> "$output_file"; echo '```' >> "$output_file"
-            tree "$temp_dir" -I ".git|.github|.agent.md|plan.txt|Progress.txt" >> "$output_file"
-            echo '```' >> "$output_file"
+      - name: Consolidate All Readable Files
+        run: |
+          OUTPUT_FILE="claude_documentation.md"
+          SOURCE_DIR="claude-code-router-main"
+          
+          echo "# Documentation for ${SOURCE_DIR}" > $OUTPUT_FILE
+          echo "" >> $OUTPUT_FILE
+
+          # This simple and reliable find command will get every file
+          find "$SOURCE_DIR" -type f | sort | while read -r file; do
             
-            echo "## 4. Source Files" >> "$output_file"
-            current_dir=""
-            
-            # --- THIS IS THE CRITICAL FIX ---
-            # A single, simple 'find' command to get a clean, sorted list of all relevant files.
-            # This is much more reliable than the previous complex loop.
-            find "$temp_dir" -type f \
-              -not -path '*/.git/*' \
-              -not -name "README.md" -not -name "Design.md" \
-              -not -name ".agent.md" -not -name "plan.txt" -not -name "Progress.txt" \
-              | sort | while read -r file; do
-                # The file type check remains the same, as it is correct.
-                if file -b --mime-type "$file" | grep -q "text"; then
-                  file_dir=$(dirname "$file"); [ "$file_dir" != "$current_dir" ] && current_dir="$file_dir" && echo "### Folder: \`$current_dir\`" >> "$output_file"
-                  echo "#### File: \`$file\`" >> "$output_file"; echo '```' >> "$output_file"; cat "$file" >> "$output_file"; echo "" >> "$output_file"; echo '```' >> "$output_file"
-                fi
-              done
-            
-            rm -rf "$temp_dir"
+            # This check correctly identifies any text/code file and ignores binaries
+            if file -b --mime-type "$file" | grep -q "text"; then
+              echo "Processing: $file"
+              echo "---" >> $OUTPUT_FILE
+              echo "## File: \`$file\`" >> $OUTPUT_FILE
+              echo "" >> $OUTPUT_FILE
+              echo '```' >> $OUTPUT_FILE
+              cat "$file" >> $OUTPUT_FILE
+              echo "" >> $OUTPUT_FILE
+              echo '```' >> $OUTPUT_FILE
+              echo "" >> $OUTPUT_FILE
+            else
+              echo "Skipping binary file: $file"
+            fi
           done
 
-      - name: 3. Finalize and Clean Up Repository
-        run: |
-          if [ -d "final_docs" ] && [ "$(ls -A final_docs)" ]; then
-            echo "Documentation files were generated. Finalizing..."
-            mv final_docs/* .
-            
-            if [ "${{ github.event.inputs.overwrite_repository }}" == "true" ]; then
-              echo "Overwrite is enabled. Deleting all non-documentation files..."
-              find . -mindepth 1 ! -path './.git*' ! -path './.github*' ! -name '*_documentation.md' -exec rm -rf {} +
-              echo "Cleanup complete."
-            fi
-          else
-            echo "No documentation files were generated. Skipping finalization."
-          fi
-          rm -rf final_docs
-
-      - name: 4. Commit Changes
+      - name: Commit Documentation File
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          git add .
+          git add claude_documentation.md
           
           if [ -n "$(git status --porcelain)" ]; then
-            if [ "${{ github.event.inputs.overwrite_repository }}" == "true" ]; then
-              git commit -m "docs: Replace repository with new documentation"
-            else
-              git commit -m "docs: Create/update project documentation"
-            fi
+            git commit -m "docs: Generate documentation for claude-code-router"
             git push
           else
-            echo "No changes detected, nothing to commit."
+            echo "No changes to the documentation file."
           fi
