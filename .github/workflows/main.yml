@@ -1,12 +1,18 @@
-name: Generate and Replace with Documentation
+name: Process and Document Zip Archives
 on:
   workflow_dispatch:
+    inputs:
+      zip_files:
+        description: 'Zip files to process (space-separated)'
+        required: true
+        type: string
+        default: 'opencode-main.zip claude-code-router-main.zip'
   push:
     branches:
       - main
 
 jobs:
-  build-docs:
+  build-and-document:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -15,109 +21,94 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: 1. Unpack source archives into temporary folders
-        run: |
-          mkdir -p temp_opencode temp_claude
-          
-          echo "Unpacking opencode-main.zip..."
-          unzip -o opencode-main.zip -d temp_opencode
-          rsync -a temp_opencode/opencode-main/ temp_opencode/
-          rm -rf temp_opencode/opencode-main
-          
-          echo "Unpacking claude-code-router-main.zip..."
-          unzip -o claude-code-router-main.zip -d temp_claude
-          rsync -a temp_claude/claude-code-router-main/ temp_claude/
-          rm -rf temp_claude/claude-code-router-main
-
-      - name: 2. Install tree utility
+      - name: 1. Install necessary utilities
         run: sudo apt-get update && sudo apt-get install -y tree
 
-      - name: 3. Generate Documentation for OpenCode
+      - name: 2. Process each specified zip file
         run: |
-          cd temp_opencode
-          OUTPUT_FILE="../opencode_documentation.md"
+          # Create a directory to hold the final documentation files
+          mkdir -p final_docs
           
-          echo "# Project Documentation: OpenCode" > $OUTPUT_FILE
-          echo "" >> $OUTPUT_FILE
+          # Loop through the list of files provided in the manual trigger
+          for zip_file in ${{ github.event.inputs.zip_files }}; do
+            
+            # --- ROBUSTNESS CHECK ---
+            # If the zip file doesn't exist, print a warning and skip to the next one
+            if [ ! -f "$zip_file" ]; then
+              echo "⚠️ Warning: Skipping '$zip_file' because it was not found."
+              continue
+            fi
+            
+            echo "--- Processing: $zip_file ---"
+            
+            # --- DYNAMIC NAMING ---
+            # Automatically determine names from the zip filename
+            # e.g., "opencode-main.zip" becomes "opencode-main"
+            basename="${zip_file%.zip}"
+            temp_dir="temp_${basename}"
+            output_file="final_docs/${basename}_documentation.md"
+            
+            # Unpack into a temporary, isolated directory
+            mkdir -p "$temp_dir"
+            unzip -o "$zip_file" -d "$temp_dir"
+            # Move contents from sub-folder to the temp root
+            rsync -a "${temp_dir}/${basename}/" "$temp_dir/"
+            rm -rf "${temp_dir}/${basename}"
+            
+            # --- DOCUMENTATION GENERATION ---
+            echo "# Project Documentation: ${basename}" > "$output_file"
+            
+            # This is a safe way to append content only if the source file exists
+            [ -f "${temp_dir}/README.md" ] && { echo "## 1. README" >> "$output_file"; echo '```' >> "$output_file"; cat "${temp_dir}/README.md" >> "$output_file"; echo '```' >> "$output_file"; }
+            [ -f "${temp_dir}/Design.md" ] && { echo "## 2. Design Document" >> "$output_file"; echo '```' >> "$output_file"; cat "${temp_dir}/Design.md" >> "$output_file"; echo '```' >> "$output_file"; }
 
-          if [ -f "README.md" ]; then
-            echo "## 1. README" >> $OUTPUT_FILE && cat README.md >> $OUTPUT_FILE
-          fi
-          if [ -f "Design.md" ]; then
-            echo "## 2. Design Document" >> $OUTPUT_FILE && cat Design.md >> $OUTPUT_FILE
-          fi
+            echo "## 3. Project File Tree" >> "$output_file"
+            echo '```' >> "$output_file"
+            tree "$temp_dir" -I ".git|.github|.agent.md|plan.txt|Progress.txt" >> "$output_file"
+            echo '```' >> "$output_file"
+            
+            echo "## 4. Source Files" >> "$output_file"
+            current_dir=""
+            find "$temp_dir" -type d -name ".git" -prune -o -type d -name ".github" -prune -o -print | sort | while read -r p; do
+              if [ -d "$p" ]; then
+                find "$p" -maxdepth 1 -type f \
+                  -not -name "README.md" -not -name "Design.md" \
+                  -not -name ".agent.md" -not -name "plan.txt" -not -name "Progress.txt" \
+                  | sort | while read -r file; do
+                    if file -b --mime-type "$file" | grep -q "text"; then
+                      file_dir=$(dirname "$file"); [ "$file_dir" != "$current_dir" ] && current_dir="$file_dir" && echo "### Folder: \`$current_dir\`" >> "$output_file"
+                      echo "#### File: \`$file\`" >> "$output_file"; echo '```' >> "$output_file"; cat "$file" >> "$output_file"; echo "" >> $output_file; echo '```' >> "$output_file"
+                    fi
+                done; fi; done
 
-          echo "## 3. Project File Tree" >> $OUTPUT_FILE
-          echo '```' >> $OUTPUT_FILE
-          tree -I ".git|.github|.agent.md|plan.txt|Progress.txt" >> $OUTPUT_FILE
-          echo '```' >> $OUTPUT_FILE
-          
-          echo "## 4. Source Files" >> $OUTPUT_FILE
-          current_dir=""
-          find . -type d -name ".git" -prune -o -type d -name ".github" -prune -o -print | sort | while read -r p; do
-            if [ -d "$p" ]; then
-              find "$p" -maxdepth 1 -type f -not -name "README.md" -not -name "Design.md" -not -name ".agent.md" -not -name "plan.txt" -not -name "Progress.txt" | sort | while read -r file; do
-                if file -b --mime-type "$file" | grep -q "text"; then
-                  file_dir=$(dirname "$file"); [ "$file_dir" != "$current_dir" ] && current_dir="$file_dir" && echo "### Folder: \`$current_dir\`" >> $OUTPUT_FILE
-                  echo "#### File: \`$file\`" >> $OUTPUT_FILE; echo '```' >> $OUTPUT_FILE; cat "$file" >> $OUTPUT_FILE; echo '```' >> $OUTPUT_FILE;
-                fi
-              done; fi; done
-          cd ..
+            # Clean up the temporary directory for this zip
+            rm -rf "$temp_dir"
+            echo "--- Finished processing: $zip_file ---"
+          done
 
-      - name: 4. Generate Documentation for Claude Code Router
+      - name: 3. DELETE EVERYTHING except the new documentation
         run: |
-          cd temp_claude
-          OUTPUT_FILE="../claude_code_router_documentation.md"
+          echo "Performing final cleanup..."
+          # Move the generated documentation to the root
+          mv final_docs/* .
+          rm -rf final_docs
           
-          echo "# Project Documentation: Claude Code Router" > $OUTPUT_FILE
-          echo "" >> $OUTPUT_FILE
-          
-          if [ -f "README.md" ]; then
-            echo "## 1. README" >> $OUTPUT_FILE && cat README.md >> $OUTPUT_FILE
-          fi
-          if [ -f "Design.md" ]; then
-            echo "## 2. Design Document" >> $OUTPUT_FILE && cat Design.md >> $OUTPUT_FILE
-          fi
-
-          echo "## 3. Project File Tree" >> $OUTPUT_FILE
-          echo '```' >> $OUTPUT_FILE
-          tree -I ".git|.github|.agent.md|plan.txt|Progress.txt" >> $OUTPUT_FILE
-          echo '```' >> $OUTPUT_FILE
-          
-          echo "## 4. Source Files" >> $OUTPUT_FILE
-          current_dir=""
-          find . -type d -name ".git" -prune -o -type d -name ".github" -prune -o -print | sort | while read -r p; do
-            if [ -d "$p" ]; then
-              find "$p" -maxdepth 1 -type f -not -name "README.md" -not -name "Design.md" -not -name ".agent.md" -not -name "plan.txt" -not -name "Progress.txt" | sort | while read -r file; do
-                if file -b --mime-type "$file" | grep -q "text"; then
-                  file_dir=$(dirname "$file"); [ "$file_dir" != "$current_dir" ] && current_dir="$file_dir" && echo "### Folder: \`$current_dir\`" >> $OUTPUT_FILE
-                  echo "#### File: \`$file\`" >> $OUTPUT_FILE; echo '```' >> $OUTPUT_FILE; cat "$file" >> $OUTPUT_FILE; echo '```' >> $OUTPUT_FILE;
-                fi
-              done; fi; done
-          cd ..
-
-      - name: 5. DELETE EVERYTHING except the new documentation files
-        run: |
-          echo "Performing final cleanup. Only documentation files will remain."
-          find . -mindepth 1 \
-            ! -path './.git*' \
-            ! -path './.github*' \
-            ! -path './opencode_documentation.md' \
-            ! -path './claude_code_router_documentation.md' \
-            -exec rm -rf {} +
-          echo "Cleanup complete."
+          # Find and delete everything except git, github, and the new markdown files
+          find . -mindepth 1 ! -path './.git*' ! -path './.github*' ! -name '*_documentation.md' -exec rm -rf {} +
+          echo "Cleanup complete. Repository now contains only documentation."
           ls -la
 
-      - name: 6. Commit the final documentation
+      - name: 4. Commit the final documentation
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
+          # Add all remaining files (which should only be the new docs)
           git add .
           
           if [ -n "$(git status --porcelain)" ]; then
-            git commit -m "docs: Generate and replace repository with project documentation"
+            git commit -m "docs: Generate and replace repository with new documentation"
             git push
           else
-            echo "No changes detected to commit."
+            echo "No documentation was generated, nothing to commit."
           fi
