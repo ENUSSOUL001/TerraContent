@@ -1,6 +1,6 @@
 # Project Documentation: claude-code-router-main
 ## 1. README
-```markdown
+```
 # Claude Code Router
 
 > This is a tool for routing Claude Code requests to different models, and you can customize any request.
@@ -470,215 +470,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ```
-### Folder: `temp_claude-code-router-main/blog/en`
-#### File: `temp_claude-code-router-main/blog/en/project-motivation-and-how-it-works.md`
-```
-# Project Motivation and Principles
-
-As early as the day after Claude Code was released (2025-02-25), I began and completed a reverse engineering attempt of the project. At that time, using Claude Code required registering for an Anthropic account, applying for a waitlist, and waiting for approval. However, due to well-known reasons, Anthropic blocks users from mainland China, making it impossible for me to use the service through normal means. Based on known information, I discovered the following:
-
-1. Claude Code is installed via npm, so it's very likely developed with Node.js.
-2. Node.js offers various debugging methods: simple `console.log` usage, launching with `--inspect` to hook into Chrome DevTools, or even debugging obfuscated code using `d8`.
-
-My goal was to use Claude Code without an Anthropic account. I didn’t need the full source code—just a way to intercept and reroute requests made by Claude Code to Anthropic’s models to my own custom endpoint. So I started the reverse engineering process:
-
-1. First, install Claude Code:
-```bash
-npm install -g @anthropic-ai/claude-code
-```
-
-2. After installation, the project is located at `~/.nvm/versions/node/v20.10.0/lib/node_modules/@anthropic-ai/claude-code`(this may vary depending on your Node version manager and version).
-
-3. Open the package.json to analyze the entry point:
-```package.json
-{
-  "name": "@anthropic-ai/claude-code",
-  "version": "1.0.24",
-  "main": "sdk.mjs",
-  "types": "sdk.d.ts",
-  "bin": {
-    "claude": "cli.js"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "type": "module",
-  "author": "Boris Cherny <boris@anthropic.com>",
-  "license": "SEE LICENSE IN README.md",
-  "description": "Use Claude, Anthropic's AI assistant, right from your terminal. Claude can understand your codebase, edit files, run terminal commands, and handle entire workflows for you.",
-  "homepage": "https://github.com/anthropics/claude-code",
-  "bugs": {
-    "url": "https://github.com/anthropics/claude-code/issues"
-  },
-  "scripts": {
-    "prepare": "node -e \"if (!process.env.AUTHORIZED) { console.error('ERROR: Direct publishing is not allowed.\\nPlease use the publish-external.sh script to publish this package.'); process.exit(1); }\"",
-    "preinstall": "node scripts/preinstall.js"
-  },
-  "dependencies": {},
-  "optionalDependencies": {
-    "@img/sharp-darwin-arm64": "^0.33.5",
-    "@img/sharp-darwin-x64": "^0.33.5",
-    "@img/sharp-linux-arm": "^0.33.5",
-    "@img/sharp-linux-arm64": "^0.33.5",
-    "@img/sharp-linux-x64": "^0.33.5",
-    "@img/sharp-win32-x64": "^0.33.5"
-  }
-}
-```
-
-The key entry is `"claude": "cli.js"`. Opening cli.js, you'll see the code is minified and obfuscated. But using WebStorm’s `Format File` feature, you can reformat it for better readability:
-![webstorm-formate-file](../images/webstorm-formate-file.png)
-
-Now you can begin understanding Claude Code’s internal logic and prompt structure by reading the code. To dig deeper, you can insert console.log statements or launch in debug mode with Chrome DevTools using:
-
-```bash
-NODE_OPTIONS="--inspect-brk=9229" claude
-```
-
-This command starts Claude Code in debug mode and opens port 9229. Visit chrome://inspect/ in Chrome and click inspect to begin debugging:
-![chrome-devtools](../images/chrome-inspect.png)
-![chrome-devtools](../images/chrome-devtools.png)
-
-By searching for the keyword api.anthropic.com, you can easily locate where Claude Code makes its API calls. From the surrounding code, it's clear that baseURL can be overridden with the `ANTHROPIC_BASE_URL` environment variable, and `apiKey` and `authToken` can be configured similarly:
-![search](../images/search.png)
-
-So far, we’ve discovered some key information:
-
-1. Environment variables can override Claude Code's `baseURL` and `apiKey`.
-
-2. Claude Code adheres to the Anthropic API specification.
-
-Therefore, we need:
-1. A service to convert OpenAI API–compatible requests into Anthropic API format.
-
-2. Set the environment variables before launching Claude Code to redirect requests to this service.
-
-Thus, `claude-code-router` was born. This project uses `Express.js` to implement the `/v1/messages` endpoint. It leverages middlewares to transform request/response formats and supports request rewriting (useful for prompt tuning per model).
-
-Back in February, the full DeepSeek model series had poor support for Function Calling, so I initially used `qwen-max`. It worked well—but without KV cache support, it consumed a large number of tokens and couldn’t provide the native `Claude Code` experience.
-
-So I experimented with a Router-based mode using a lightweight model to dispatch tasks. The architecture included four roles: `router`, `tool`, `think`, and `coder`. Each request passed through a free lightweight model that would decide whether the task involved reasoning, coding, or tool usage. Reasoning and coding tasks looped until a tool was invoked to apply changes. However, the lightweight model lacked the capability to route tasks accurately, and architectural issues prevented it from effectively driving Claude Code.
-
-Everything changed at the end of May when the official Claude Code was launched, and `DeepSeek-R1` model (released 2025-05-28) added Function Call support. I redesigned the system. With the help of AI pair programming, I fixed earlier request/response transformation issues—especially the handling of models that return JSON instead of Function Call outputs.
-
-This time, I used the `DeepSeek-V3`  model. It performed better than expected: supporting most tool calls, handling task decomposition and stepwise planning, and—most importantly—costing less than one-tenth the price of Claude 3.5 Sonnet.
-
-The official Claude Code organizes agents differently from the beta version, so I restructured my Router mode to include four roles: the default model, `background`, `think`, and `longContext`.
-
-- The default model handles general tasks and acts as a fallback.
-
-- The `background` model manages lightweight background tasks. According to Anthropic, Claude Haiku 3.5 is often used here, so I routed this to a local `ollama` service.
-
-- The `think` model is responsible for reasoning and planning mode tasks. I use `DeepSeek-R1` here, though it doesn’t support cost control, so `Think` and `UltraThink` behave identically.
-
-- The `longContext` model handles long-context scenarios. The router uses `tiktoken` to calculate token lengths in real time, and if the context exceeds 32K, it switches to this model to compensate for DeepSeek's long-context limitations.
-
-This describes the evolution and reasoning behind the project. By cleverly overriding environment variables, we can forward and modify requests without altering Claude Code’s source—allowing us to benefit from official updates while using our own models and custom prompts.
-
-This project offers a practical approach to running Claude Code under Anthropic’s regional restrictions, balancing `cost`, `performance`, and `customizability`. That said, the official `Max Plan` still offers the best experience if available.
-```
-### Folder: `temp_claude-code-router-main/blog/zh`
-#### File: `temp_claude-code-router-main/blog/zh/项目初衷及原理.md`
-```
-# 项目初衷及原理
-
-早在 Claude Code 发布的第二天(2025-02-25)，我就尝试并完成了对该项目的逆向。当时要使用 Claude Code 你需要注册一个 Anthropic 账号，然后申请 waitlist，等待通过后才能使用。但是因为众所周知的原因，Anthropic 屏蔽了中国区的用户，所以通过正常手段我无法使用，通过已知的信息，我发现：
-
-1. Claude Code 使用 npm 进行安装，所以很大可能其使用 Node.js 进行开发。
-2. Node.js 调试手段众多，可以简单使用`console.log`获取想要的信息，也可以使用`--inspect`将其接入`Chrome Devtools`，甚至你可以使用`d8`去调试某些加密混淆的代码。
-
-由于我的目标是让我在没有 Anthropic 账号的情况下使用`Claude Code`，我并不需要获得完整的源代码，只需要将`Claude Code`请求 Anthropic 模型时将其转发到我自定义的接口即可。接下来我就开启了我的逆向过程：
-
-1. 首先安装`Claude Code`
-
-```bash
-npm install -g @anthropic-ai/claude-code
-```
-
-2. 安装后该项目被放在了`~/.nvm/versions/node/v20.10.0/lib/node_modules/@anthropic-ai/claude-code`中，因为我使用了`nvm`作为我的 node 版本控制器，当前使用`node-v20.10.0`，所以该路径会因人而异。
-3. 找到项目路径之后可通过 package.json 分析包入口,内容如下：
-
-```package.json
-{
-  "name": "@anthropic-ai/claude-code",
-  "version": "1.0.24",
-  "main": "sdk.mjs",
-  "types": "sdk.d.ts",
-  "bin": {
-    "claude": "cli.js"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "type": "module",
-  "author": "Boris Cherny <boris@anthropic.com>",
-  "license": "SEE LICENSE IN README.md",
-  "description": "Use Claude, Anthropic's AI assistant, right from your terminal. Claude can understand your codebase, edit files, run terminal commands, and handle entire workflows for you.",
-  "homepage": "https://github.com/anthropics/claude-code",
-  "bugs": {
-    "url": "https://github.com/anthropics/claude-code/issues"
-  },
-  "scripts": {
-    "prepare": "node -e \"if (!process.env.AUTHORIZED) { console.error('ERROR: Direct publishing is not allowed.\\nPlease use the publish-external.sh script to publish this package.'); process.exit(1); }\"",
-    "preinstall": "node scripts/preinstall.js"
-  },
-  "dependencies": {},
-  "optionalDependencies": {
-    "@img/sharp-darwin-arm64": "^0.33.5",
-    "@img/sharp-darwin-x64": "^0.33.5",
-    "@img/sharp-linux-arm": "^0.33.5",
-    "@img/sharp-linux-arm64": "^0.33.5",
-    "@img/sharp-linux-x64": "^0.33.5",
-    "@img/sharp-win32-x64": "^0.33.5"
-  }
-}
-```
-
-其中`"claude": "cli.js"`就是我们要找的入口，打开 cli.js，发现代码被压缩混淆过了。没关系，借助`webstorm`的`Formate File`功能可以重新格式化，让代码变得稍微好看一点。就像这样：
-![webstorm-formate-file](../images/webstorm-formate-file.png)
-
-现在，你可以通过阅读部分代码来了解`Claude Code`的内容工具原理与提示词。你也可以在关键地方使用`console.log`来获得更多信息，当然，也可以使用`Chrome Devtools`来进行断点调试，使用以下命令启动`Claude Code`:
-
-```bash
-NODE_OPTIONS="--inspect-brk=9229" claude
-```
-
-该命令会以调试模式启动`Claude Code`，并将调试的端口设置为`9229`。这时候通过 Chrome 访问`chrome://inspect/`即可看到当前的`Claude Code`进程，点击`inspect`即可进行调试。
-![chrome-devtools](../images/chrome-inspect.png)
-![chrome-devtools](../images/chrome-devtools.png)
-
-通过搜索关键字符`api.anthropic.com`很容易能找到`Claude Code`用来发请求的地方，根据上下文的查看，很容易发现这里的`baseURL`可以通过环境变量`ANTHROPIC_BASE_URL`进行覆盖，`apiKey`和`authToken`也同理。
-![search](../images/search.png)
-
-到目前为止，我们获得关键信息：
-
-1. 可以使用环境变量覆盖`Claude Code`的`BaseURL`和`apiKey`的配置
-
-2. `Claude Code`使用[Anthropic API](https://docs.anthropic.com/en/api/overview)的规范
-
-所以我们需要：
-
-1. 实现一个服务用来将`OpenAI API`的规范转换成`Anthropic API`格式。
-
-2. 启动`Claude Code`之前写入环境变量将`baseURL`指向到该服务。
-
-于是，`claude-code-router`就诞生了，该项目使用`Express.js`作为 HTTP 服务，实现`/v1/messages`端点，使用`middlewares`处理请求/响应的格式转换以及请求重写功能(可以用来重写 Claude Code 的提示词以针对单个模型进行调优)。
-在 2 月份由于`DeepSeek`全系列模型对`Function Call`的支持不佳导致无法直接使用`DeepSeek`模型，所以在当时我选择了`qwen-max`模型，一切表现的都很好，但是`qwen-max`不支持`KV Cache`，意味着我要消耗大量的 token，但是却无法获取`Claude Code`原生的体验。
-所以我又尝试了`Router`模式，即使用一个小模型对任务进行分发，一共分为四个模型:`router`、`tool`、`think`和`coder`，所有的请求先经过一个免费的小模型，由小模型去判断应该是进行思考还是编码还是调用工具，再进行任务的分发，如果是思考和编码任务将会进行循环调用，直到最终使用工具写入或修改文件。但是实践下来发现免费的小模型不足以很好的完成任务的分发，再加上整个 Agnet 的设计存在缺陷，导致并不能很好的驱动`Claude Code`。
-直到 5 月底，`Claude Code`被正式推出，这时`DeepSeek`全系列模型(R1 于 05-28)均支持`Function Call`，我开始重新设计该项目。在与 AI 的结对编程中我修复了之前的请求和响应转换问题，在某些场景下模型输出 JSON 响应而不是`Function Call`。这次直接使用`DeepSeek-v3`模型，它工作的比我想象中要好：能完成绝大多数工具调用，还支持用步骤规划解决任务，最关键的是`DeepSeek`的价格不到`claude Sonnet 3.5`的十分之一。正式发布的`Claude Code`对 Agent 的组织也不同于测试版，于是在分析了`Claude Code`的请求调用之后，我重新组织了`Router`模式：现在它还是四个模型：默认模型、`background`、`think`和`longContext`。
-
-- 默认模型作为最终的兜底和日常处理
-
-- `background`是用来处理一些后台任务，据 Anthropic 官方说主要用`Claude Haiku 3.5`模型去处理一些小任务，如俳句生成和对话摘要，于是我将其路由到了本地的`ollama`服务。
-
-- `think`模型用于让`Claude Code`进行思考或者在`Plan Mode`下使用，这里我使用的是`DeepSeek-R1`，由于其不支持推理成本控制，所以`Think`和`UltraThink`是一样的逻辑。
-
-- `longContext`是用于处理长下上文的场景，该项目会对每次请求使用tiktoken实时计算上下文长度，如果上下文大于32K则使用该模型，旨在弥补`DeepSeek`在长上下文处理不佳的情况。
-
-以上就是该项目的发展历程以及我的一些思考，通过巧妙的使用环境变量覆盖的手段在不修改`Claude Code`源码的情况下完成请求的转发和修改，这就使得在可以得到 Anthropic 更新的同时使用自己的模型，自定义自己的提示词。该项目只是在 Anthropic 封禁中国区用户的情况下使用`Claude Code`并且达到成本和性能平衡的一种手段。如果可以的话，还是官方的Max Plan体验最好。
-
-```
-### Folder: `temp_claude-code-router-main`
 #### File: `temp_claude-code-router-main/docker-compose.yml`
 ```
 version: "3.8"
@@ -2016,5 +1807,213 @@ snapshots:
       zod: 3.25.67
 
   zod@3.25.67: {}
+
+```
+### Folder: `temp_claude-code-router-main/blog/en`
+#### File: `temp_claude-code-router-main/blog/en/project-motivation-and-how-it-works.md`
+```
+# Project Motivation and Principles
+
+As early as the day after Claude Code was released (2025-02-25), I began and completed a reverse engineering attempt of the project. At that time, using Claude Code required registering for an Anthropic account, applying for a waitlist, and waiting for approval. However, due to well-known reasons, Anthropic blocks users from mainland China, making it impossible for me to use the service through normal means. Based on known information, I discovered the following:
+
+1. Claude Code is installed via npm, so it's very likely developed with Node.js.
+2. Node.js offers various debugging methods: simple `console.log` usage, launching with `--inspect` to hook into Chrome DevTools, or even debugging obfuscated code using `d8`.
+
+My goal was to use Claude Code without an Anthropic account. I didn’t need the full source code—just a way to intercept and reroute requests made by Claude Code to Anthropic’s models to my own custom endpoint. So I started the reverse engineering process:
+
+1. First, install Claude Code:
+```bash
+npm install -g @anthropic-ai/claude-code
+```
+
+2. After installation, the project is located at `~/.nvm/versions/node/v20.10.0/lib/node_modules/@anthropic-ai/claude-code`(this may vary depending on your Node version manager and version).
+
+3. Open the package.json to analyze the entry point:
+```package.json
+{
+  "name": "@anthropic-ai/claude-code",
+  "version": "1.0.24",
+  "main": "sdk.mjs",
+  "types": "sdk.d.ts",
+  "bin": {
+    "claude": "cli.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "type": "module",
+  "author": "Boris Cherny <boris@anthropic.com>",
+  "license": "SEE LICENSE IN README.md",
+  "description": "Use Claude, Anthropic's AI assistant, right from your terminal. Claude can understand your codebase, edit files, run terminal commands, and handle entire workflows for you.",
+  "homepage": "https://github.com/anthropics/claude-code",
+  "bugs": {
+    "url": "https://github.com/anthropics/claude-code/issues"
+  },
+  "scripts": {
+    "prepare": "node -e \"if (!process.env.AUTHORIZED) { console.error('ERROR: Direct publishing is not allowed.\\nPlease use the publish-external.sh script to publish this package.'); process.exit(1); }\"",
+    "preinstall": "node scripts/preinstall.js"
+  },
+  "dependencies": {},
+  "optionalDependencies": {
+    "@img/sharp-darwin-arm64": "^0.33.5",
+    "@img/sharp-darwin-x64": "^0.33.5",
+    "@img/sharp-linux-arm": "^0.33.5",
+    "@img/sharp-linux-arm64": "^0.33.5",
+    "@img/sharp-linux-x64": "^0.33.5",
+    "@img/sharp-win32-x64": "^0.33.5"
+  }
+}
+```
+
+The key entry is `"claude": "cli.js"`. Opening cli.js, you'll see the code is minified and obfuscated. But using WebStorm’s `Format File` feature, you can reformat it for better readability:
+![webstorm-formate-file](../images/webstorm-formate-file.png)
+
+Now you can begin understanding Claude Code’s internal logic and prompt structure by reading the code. To dig deeper, you can insert console.log statements or launch in debug mode with Chrome DevTools using:
+
+```bash
+NODE_OPTIONS="--inspect-brk=9229" claude
+```
+
+This command starts Claude Code in debug mode and opens port 9229. Visit chrome://inspect/ in Chrome and click inspect to begin debugging:
+![chrome-devtools](../images/chrome-inspect.png)
+![chrome-devtools](../images/chrome-devtools.png)
+
+By searching for the keyword api.anthropic.com, you can easily locate where Claude Code makes its API calls. From the surrounding code, it's clear that baseURL can be overridden with the `ANTHROPIC_BASE_URL` environment variable, and `apiKey` and `authToken` can be configured similarly:
+![search](../images/search.png)
+
+So far, we’ve discovered some key information:
+
+1. Environment variables can override Claude Code's `baseURL` and `apiKey`.
+
+2. Claude Code adheres to the Anthropic API specification.
+
+Therefore, we need:
+1. A service to convert OpenAI API–compatible requests into Anthropic API format.
+
+2. Set the environment variables before launching Claude Code to redirect requests to this service.
+
+Thus, `claude-code-router` was born. This project uses `Express.js` to implement the `/v1/messages` endpoint. It leverages middlewares to transform request/response formats and supports request rewriting (useful for prompt tuning per model).
+
+Back in February, the full DeepSeek model series had poor support for Function Calling, so I initially used `qwen-max`. It worked well—but without KV cache support, it consumed a large number of tokens and couldn’t provide the native `Claude Code` experience.
+
+So I experimented with a Router-based mode using a lightweight model to dispatch tasks. The architecture included four roles: `router`, `tool`, `think`, and `coder`. Each request passed through a free lightweight model that would decide whether the task involved reasoning, coding, or tool usage. Reasoning and coding tasks looped until a tool was invoked to apply changes. However, the lightweight model lacked the capability to route tasks accurately, and architectural issues prevented it from effectively driving Claude Code.
+
+Everything changed at the end of May when the official Claude Code was launched, and `DeepSeek-R1` model (released 2025-05-28) added Function Call support. I redesigned the system. With the help of AI pair programming, I fixed earlier request/response transformation issues—especially the handling of models that return JSON instead of Function Call outputs.
+
+This time, I used the `DeepSeek-V3`  model. It performed better than expected: supporting most tool calls, handling task decomposition and stepwise planning, and—most importantly—costing less than one-tenth the price of Claude 3.5 Sonnet.
+
+The official Claude Code organizes agents differently from the beta version, so I restructured my Router mode to include four roles: the default model, `background`, `think`, and `longContext`.
+
+- The default model handles general tasks and acts as a fallback.
+
+- The `background` model manages lightweight background tasks. According to Anthropic, Claude Haiku 3.5 is often used here, so I routed this to a local `ollama` service.
+
+- The `think` model is responsible for reasoning and planning mode tasks. I use `DeepSeek-R1` here, though it doesn’t support cost control, so `Think` and `UltraThink` behave identically.
+
+- The `longContext` model handles long-context scenarios. The router uses `tiktoken` to calculate token lengths in real time, and if the context exceeds 32K, it switches to this model to compensate for DeepSeek's long-context limitations.
+
+This describes the evolution and reasoning behind the project. By cleverly overriding environment variables, we can forward and modify requests without altering Claude Code’s source—allowing us to benefit from official updates while using our own models and custom prompts.
+
+This project offers a practical approach to running Claude Code under Anthropic’s regional restrictions, balancing `cost`, `performance`, and `customizability`. That said, the official `Max Plan` still offers the best experience if available.
+```
+### Folder: `temp_claude-code-router-main/blog/zh`
+#### File: `temp_claude-code-router-main/blog/zh/项目初衷及原理.md`
+```
+# 项目初衷及原理
+
+早在 Claude Code 发布的第二天(2025-02-25)，我就尝试并完成了对该项目的逆向。当时要使用 Claude Code 你需要注册一个 Anthropic 账号，然后申请 waitlist，等待通过后才能使用。但是因为众所周知的原因，Anthropic 屏蔽了中国区的用户，所以通过正常手段我无法使用，通过已知的信息，我发现：
+
+1. Claude Code 使用 npm 进行安装，所以很大可能其使用 Node.js 进行开发。
+2. Node.js 调试手段众多，可以简单使用`console.log`获取想要的信息，也可以使用`--inspect`将其接入`Chrome Devtools`，甚至你可以使用`d8`去调试某些加密混淆的代码。
+
+由于我的目标是让我在没有 Anthropic 账号的情况下使用`Claude Code`，我并不需要获得完整的源代码，只需要将`Claude Code`请求 Anthropic 模型时将其转发到我自定义的接口即可。接下来我就开启了我的逆向过程：
+
+1. 首先安装`Claude Code`
+
+```bash
+npm install -g @anthropic-ai/claude-code
+```
+
+2. 安装后该项目被放在了`~/.nvm/versions/node/v20.10.0/lib/node_modules/@anthropic-ai/claude-code`中，因为我使用了`nvm`作为我的 node 版本控制器，当前使用`node-v20.10.0`，所以该路径会因人而异。
+3. 找到项目路径之后可通过 package.json 分析包入口,内容如下：
+
+```package.json
+{
+  "name": "@anthropic-ai/claude-code",
+  "version": "1.0.24",
+  "main": "sdk.mjs",
+  "types": "sdk.d.ts",
+  "bin": {
+    "claude": "cli.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "type": "module",
+  "author": "Boris Cherny <boris@anthropic.com>",
+  "license": "SEE LICENSE IN README.md",
+  "description": "Use Claude, Anthropic's AI assistant, right from your terminal. Claude can understand your codebase, edit files, run terminal commands, and handle entire workflows for you.",
+  "homepage": "https://github.com/anthropics/claude-code",
+  "bugs": {
+    "url": "https://github.com/anthropics/claude-code/issues"
+  },
+  "scripts": {
+    "prepare": "node -e \"if (!process.env.AUTHORIZED) { console.error('ERROR: Direct publishing is not allowed.\\nPlease use the publish-external.sh script to publish this package.'); process.exit(1); }\"",
+    "preinstall": "node scripts/preinstall.js"
+  },
+  "dependencies": {},
+  "optionalDependencies": {
+    "@img/sharp-darwin-arm64": "^0.33.5",
+    "@img/sharp-darwin-x64": "^0.33.5",
+    "@img/sharp-linux-arm": "^0.33.5",
+    "@img/sharp-linux-arm64": "^0.33.5",
+    "@img/sharp-linux-x64": "^0.33.5",
+    "@img/sharp-win32-x64": "^0.33.5"
+  }
+}
+```
+
+其中`"claude": "cli.js"`就是我们要找的入口，打开 cli.js，发现代码被压缩混淆过了。没关系，借助`webstorm`的`Formate File`功能可以重新格式化，让代码变得稍微好看一点。就像这样：
+![webstorm-formate-file](../images/webstorm-formate-file.png)
+
+现在，你可以通过阅读部分代码来了解`Claude Code`的内容工具原理与提示词。你也可以在关键地方使用`console.log`来获得更多信息，当然，也可以使用`Chrome Devtools`来进行断点调试，使用以下命令启动`Claude Code`:
+
+```bash
+NODE_OPTIONS="--inspect-brk=9229" claude
+```
+
+该命令会以调试模式启动`Claude Code`，并将调试的端口设置为`9229`。这时候通过 Chrome 访问`chrome://inspect/`即可看到当前的`Claude Code`进程，点击`inspect`即可进行调试。
+![chrome-devtools](../images/chrome-inspect.png)
+![chrome-devtools](../images/chrome-devtools.png)
+
+通过搜索关键字符`api.anthropic.com`很容易能找到`Claude Code`用来发请求的地方，根据上下文的查看，很容易发现这里的`baseURL`可以通过环境变量`ANTHROPIC_BASE_URL`进行覆盖，`apiKey`和`authToken`也同理。
+![search](../images/search.png)
+
+到目前为止，我们获得关键信息：
+
+1. 可以使用环境变量覆盖`Claude Code`的`BaseURL`和`apiKey`的配置
+
+2. `Claude Code`使用[Anthropic API](https://docs.anthropic.com/en/api/overview)的规范
+
+所以我们需要：
+
+1. 实现一个服务用来将`OpenAI API`的规范转换成`Anthropic API`格式。
+
+2. 启动`Claude Code`之前写入环境变量将`baseURL`指向到该服务。
+
+于是，`claude-code-router`就诞生了，该项目使用`Express.js`作为 HTTP 服务，实现`/v1/messages`端点，使用`middlewares`处理请求/响应的格式转换以及请求重写功能(可以用来重写 Claude Code 的提示词以针对单个模型进行调优)。
+在 2 月份由于`DeepSeek`全系列模型对`Function Call`的支持不佳导致无法直接使用`DeepSeek`模型，所以在当时我选择了`qwen-max`模型，一切表现的都很好，但是`qwen-max`不支持`KV Cache`，意味着我要消耗大量的 token，但是却无法获取`Claude Code`原生的体验。
+所以我又尝试了`Router`模式，即使用一个小模型对任务进行分发，一共分为四个模型:`router`、`tool`、`think`和`coder`，所有的请求先经过一个免费的小模型，由小模型去判断应该是进行思考还是编码还是调用工具，再进行任务的分发，如果是思考和编码任务将会进行循环调用，直到最终使用工具写入或修改文件。但是实践下来发现免费的小模型不足以很好的完成任务的分发，再加上整个 Agnet 的设计存在缺陷，导致并不能很好的驱动`Claude Code`。
+直到 5 月底，`Claude Code`被正式推出，这时`DeepSeek`全系列模型(R1 于 05-28)均支持`Function Call`，我开始重新设计该项目。在与 AI 的结对编程中我修复了之前的请求和响应转换问题，在某些场景下模型输出 JSON 响应而不是`Function Call`。这次直接使用`DeepSeek-v3`模型，它工作的比我想象中要好：能完成绝大多数工具调用，还支持用步骤规划解决任务，最关键的是`DeepSeek`的价格不到`claude Sonnet 3.5`的十分之一。正式发布的`Claude Code`对 Agent 的组织也不同于测试版，于是在分析了`Claude Code`的请求调用之后，我重新组织了`Router`模式：现在它还是四个模型：默认模型、`background`、`think`和`longContext`。
+
+- 默认模型作为最终的兜底和日常处理
+
+- `background`是用来处理一些后台任务，据 Anthropic 官方说主要用`Claude Haiku 3.5`模型去处理一些小任务，如俳句生成和对话摘要，于是我将其路由到了本地的`ollama`服务。
+
+- `think`模型用于让`Claude Code`进行思考或者在`Plan Mode`下使用，这里我使用的是`DeepSeek-R1`，由于其不支持推理成本控制，所以`Think`和`UltraThink`是一样的逻辑。
+
+- `longContext`是用于处理长下上文的场景，该项目会对每次请求使用tiktoken实时计算上下文长度，如果上下文大于32K则使用该模型，旨在弥补`DeepSeek`在长上下文处理不佳的情况。
+
+以上就是该项目的发展历程以及我的一些思考，通过巧妙的使用环境变量覆盖的手段在不修改`Claude Code`源码的情况下完成请求的转发和修改，这就使得在可以得到 Anthropic 更新的同时使用自己的模型，自定义自己的提示词。该项目只是在 Anthropic 封禁中国区用户的情况下使用`Claude Code`并且达到成本和性能平衡的一种手段。如果可以的话，还是官方的Max Plan体验最好。
 
 ```
