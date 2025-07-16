@@ -1,12 +1,20 @@
-name: Generate Documentation
+name: Process and Document Zip Archives
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
+    inputs:
+      zip_files:
+        description: 'Zip files to process (space-separated)'
+        required: true
+        type: string
+        default: 'claude-code-router-main.zip opencode-main.zip'
+      overwrite_repository:
+        description: 'If true, delete all other files and replace the repo with the generated docs.'
+        required: true
+        type: boolean
+        default: true
 
 jobs:
-  build-documentation:
+  build-and-document:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -15,57 +23,100 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Unpack Archive
-        run: |
-          # Failsafe check to make sure the zip exists before trying to unzip
-          if [ -f "claude-code-router-main.zip" ]; then
-            unzip -o claude-code-router-main.zip
-          else
-            echo "Error: claude-code-router-main.zip not found."
-            exit 1
-          fi
+      - name: 1. Install necessary utilities
+        run: sudo apt-get update && sudo apt-get install -y tree
 
-      - name: Consolidate All Readable Files
+      - name: 2. Process each specified zip file
         run: |
-          OUTPUT_FILE="claude_documentation.md"
-          SOURCE_DIR="claude-code-router-main"
-          
-          echo "# Documentation for ${SOURCE_DIR}" > $OUTPUT_FILE
-          echo "" >> $OUTPUT_FILE
-
-          # This is a simple, powerful, and reliable command to find all files recursively.
-          # It then pipes that list to a loop.
-          find "$SOURCE_DIR" -type f | sort | while read -r file; do
-            
-            # This is the correct way to check if a file is text-based.
-            # It checks the file's content, not its name. It will find .json, .md,
-            # .yml, .ts, Dockerfile, LICENSE, and any other readable text file.
-            if file -b --mime-type "$file" | grep -q "text"; then
-              echo "✅ Combining: $file"
-              echo "---" >> $OUTPUT_FILE
-              echo "## File: \`$file\`" >> $OUTPUT_FILE
-              echo "" >> $OUTPUT_FILE
-              echo '```' >> $OUTPUT_FILE
-              cat "$file" >> $OUTPUT_FILE
-              echo "" >> $OUTPUT_FILE
-              echo '```' >> $OUTPUT_FILE
-              echo "" >> $OUTPUT_FILE
-            else
-              # It will correctly identify and skip binary files like images.
-              echo "Skipping binary file: $file"
+          mkdir -p final_docs
+          for zip_file in ${{ github.event.inputs.zip_files }}; do
+            if [ ! -f "$zip_file" ]; then
+              echo "⚠️ Warning: Skipping '$zip_file' because it was not found."
+              continue
             fi
+            
+            echo "--- Processing: $zip_file ---"
+            basename="${zip_file%.zip}"
+            temp_dir="temp_${basename}"
+            output_file="final_docs/${basename}_documentation.md"
+            
+            mkdir -p "$temp_dir"
+            unzip -o "$zip_file" -d "$temp_dir"
+            rsync -a "${temp_dir}/${basename}/" "$temp_dir/"
+            rm -rf "${temp_dir}/${basename}"
+            
+            echo "# Project Documentation: ${basename}" > "$output_file"
+            [ -f "${temp_dir}/README.md" ] && { echo "## 1. README" >> "$output_file"; echo '```markdown' >> "$output_file"; cat "${temp_dir}/README.md" >> "$output_file"; echo '```' >> "$output_file"; }
+            [ -f "${temp_dir}/Design.md" ] && { echo "## 2. Design Document" >> "$output_file"; echo '```markdown' >> "$output_file"; cat "${temp_dir}/Design.md" >> "$output_file"; echo '```' >> "$output_file"; }
+
+            echo "## 3. Project File Tree" >> "$output_file"; echo '```' >> "$output_file"
+            tree "$temp_dir" -I ".git|.github|.agent.md|plan.txt|Progress.txt" >> "$output_file"
+            echo '```' >> "$output_file"
+            
+            echo "## 4. Source Files" >> "$output_file"
+            current_dir=""
+            
+            # --- THIS IS THE CRITICAL FIX ---
+            # We are now explicitly finding files by name and extension.
+            # This is reliable and not subject to content-sniffing errors.
+            find "$temp_dir" -type f \( \
+              -name "*.json" \
+              -o -name "*.md" \
+              -o -name "*.yml" \
+              -o -name "*.yaml" \
+              -o -name "*.ts" \
+              -o -name "*.js" \
+              -o -name "*.tsx" \
+              -o -name "*.jsx" \
+              -o -name "*.html" \
+              -o -name "*.css" \
+              -o -name "*.txt" \
+              -o -name "*.py" \
+              -o -name "LICENSE" \
+              -o -name "Dockerfile" \
+              -o -name ".*ignore" \
+              -o -name ".*rc" \
+            \) -not -name "README.md" -not -name "Design.md" \
+               -not -name ".agent.md" -not -name "plan.txt" -not -name "Progress.txt" \
+              | sort | while read -r file; do
+                echo "✅ Combining: $file"
+                file_dir=$(dirname "$file"); [ "$file_dir" != "$current_dir" ] && current_dir="$file_dir" && echo "### Folder: \`$current_dir\`" >> "$output_file"
+                echo "#### File: \`$file\`" >> "$output_file"; echo '```' >> "$output_file"; cat "$file" >> "$output_file"; echo "" >> "$output_file"; echo '```' >> "$output_file"
+              done
+            
+            rm -rf "$temp_dir"
           done
 
-      - name: Commit Documentation File
+      - name: 3. Finalize and Clean Up Repository
+        run: |
+          if [ -d "final_docs" ] && [ "$(ls -A final_docs)" ]; then
+            echo "Documentation files were generated. Finalizing..."
+            mv final_docs/* .
+            
+            if [ "${{ github.event.inputs.overwrite_repository }}" == "true" ]; then
+              echo "Overwrite is enabled. Deleting all non-documentation files..."
+              find . -mindepth 1 ! -path './.git*' ! -path './.github*' ! -name '*_documentation.md' -exec rm -rf {} +
+              echo "Cleanup complete."
+            fi
+          else
+            echo "No documentation files were generated. Skipping finalization."
+          fi
+          rm -rf final_docs
+
+      - name: 4. Commit Changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          git add claude_documentation.md
+          git add .
           
           if [ -n "$(git status --porcelain)" ]; then
-            git commit -m "docs: Generate documentation for claude-code-router"
+            if [ "${{ github.event.inputs.overwrite_repository }}" == "true" ]; then
+              git commit -m "docs: Replace repository with new documentation"
+            else
+              git commit -m "docs: Create/update project documentation"
+            fi
             git push
           else
-            echo "No changes to the documentation file."
+            echo "No changes detected, nothing to commit."
           fi
