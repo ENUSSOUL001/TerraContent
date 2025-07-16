@@ -1,4 +1,4 @@
-name: Simple Documentation Generator
+name: Generate Documentation
 on:
   workflow_dispatch:
   push:
@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  build:
+  build-documentation:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -17,7 +17,13 @@ jobs:
 
       - name: Unpack Archive
         run: |
-          unzip -o claude-code-router-main.zip
+          # Failsafe check to make sure the zip exists before trying to unzip
+          if [ -f "claude-code-router-main.zip" ]; then
+            unzip -o claude-code-router-main.zip
+          else
+            echo "Error: claude-code-router-main.zip not found."
+            exit 1
+          fi
 
       - name: Consolidate All Readable Files
         run: |
@@ -27,12 +33,15 @@ jobs:
           echo "# Documentation for ${SOURCE_DIR}" > $OUTPUT_FILE
           echo "" >> $OUTPUT_FILE
 
-          # This simple and reliable find command will get every file
+          # This is a simple, powerful, and reliable command to find all files recursively.
+          # It then pipes that list to a loop.
           find "$SOURCE_DIR" -type f | sort | while read -r file; do
             
-            # This check correctly identifies any text/code file and ignores binaries
+            # This is the correct way to check if a file is text-based.
+            # It checks the file's content, not its name. It will find .json, .md,
+            # .yml, .ts, Dockerfile, LICENSE, and any other readable text file.
             if file -b --mime-type "$file" | grep -q "text"; then
-              echo "Processing: $file"
+              echo "✅ Combining: $file"
               echo "---" >> $OUTPUT_FILE
               echo "## File: \`$file\`" >> $OUTPUT_FILE
               echo "" >> $OUTPUT_FILE
@@ -42,6 +51,7 @@ jobs:
               echo '```' >> $OUTPUT_FILE
               echo "" >> $OUTPUT_FILE
             else
+              # It will correctly identify and skip binary files like images.
               echo "Skipping binary file: $file"
             fi
           done
