@@ -3,10 +3,9 @@ on:
   workflow_dispatch:
     inputs:
       zip_files:
-        description: 'Zip files to process (space-separated)'
+        description: 'Zip files to process (e.g., file1.zip file2.zip)'
         required: true
         type: string
-        default: 'claude-code-router-main.zip opencode-main.zip'
       overwrite_repository:
         description: 'If true, delete all other files and replace the repo with the generated docs.'
         required: true
@@ -20,13 +19,12 @@ jobs:
       contents: write
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 1. Install necessary utilities
+      - name: Install Utilities
         run: sudo apt-get update && sudo apt-get install -y tree
 
-      - name: 2. Process each specified zip file
+      - name: Process Zip Archives
         run: |
           mkdir -p final_docs
           for zip_file in ${{ github.event.inputs.zip_files }}; do
@@ -35,7 +33,6 @@ jobs:
               continue
             fi
             
-            echo "--- Processing: $zip_file ---"
             basename="${zip_file%.zip}"
             temp_dir="temp_${basename}"
             output_file="final_docs/${basename}_documentation.md"
@@ -56,60 +53,39 @@ jobs:
             echo "## 4. Source Files" >> "$output_file"
             current_dir=""
             
-            # --- THIS IS THE CRITICAL FIX ---
-            # We are now explicitly finding files by name and extension.
-            # This is reliable and not subject to content-sniffing errors.
-            find "$temp_dir" -type f \( \
-              -name "*.json" \
-              -o -name "*.md" \
-              -o -name "*.yml" \
-              -o -name "*.yaml" \
-              -o -name "*.ts" \
-              -o -name "*.js" \
-              -o -name "*.tsx" \
-              -o -name "*.jsx" \
-              -o -name "*.html" \
-              -o -name "*.css" \
-              -o -name "*.txt" \
-              -o -name "*.py" \
-              -o -name "LICENSE" \
-              -o -name "Dockerfile" \
-              -o -name ".*ignore" \
-              -o -name ".*rc" \
-            \) -not -name "README.md" -not -name "Design.md" \
-               -not -name ".agent.md" -not -name "plan.txt" -not -name "Progress.txt" \
+            find "$temp_dir" -type f -not -path '*/.git/*' \
+              -not -name "README.md" -not -name "Design.md" \
+              -not -name ".agent.md" -not -name "plan.txt" -not -name "Progress.txt" \
               | sort | while read -r file; do
-                echo "✅ Combining: $file"
-                file_dir=$(dirname "$file"); [ "$file_dir" != "$current_dir" ] && current_dir="$file_dir" && echo "### Folder: \`$current_dir\`" >> "$output_file"
-                echo "#### File: \`$file\`" >> "$output_file"; echo '```' >> "$output_file"; cat "$file" >> "$output_file"; echo "" >> "$output_file"; echo '```' >> "$output_file"
+                if grep -qI . "$file"; then
+                  echo "✅ Combining: $file"
+                  file_dir=$(dirname "$file"); [ "$file_dir" != "$current_dir" ] && current_dir="$file_dir" && echo "### Folder: \`$current_dir\`" >> "$output_file"
+                  echo "#### File: \`$file\`" >> "$output_file"; echo '```' >> "$output_file"; cat "$file" >> "$output_file"; echo "" >> "$output_file"; echo '```' >> "$output_file"
+                else
+                  echo "Skipping binary file: $file"
+                fi
               done
             
             rm -rf "$temp_dir"
           done
 
-      - name: 3. Finalize and Clean Up Repository
+      - name: Finalize and Clean Repository
         run: |
           if [ -d "final_docs" ] && [ "$(ls -A final_docs)" ]; then
-            echo "Documentation files were generated. Finalizing..."
             mv final_docs/* .
-            
             if [ "${{ github.event.inputs.overwrite_repository }}" == "true" ]; then
-              echo "Overwrite is enabled. Deleting all non-documentation files..."
               find . -mindepth 1 ! -path './.git*' ! -path './.github*' ! -name '*_documentation.md' -exec rm -rf {} +
-              echo "Cleanup complete."
             fi
           else
             echo "No documentation files were generated. Skipping finalization."
           fi
           rm -rf final_docs
 
-      - name: 4. Commit Changes
+      - name: Commit Changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
           git add .
-          
           if [ -n "$(git status --porcelain)" ]; then
             if [ "${{ github.event.inputs.overwrite_repository }}" == "true" ]; then
               git commit -m "docs: Replace repository with new documentation"
