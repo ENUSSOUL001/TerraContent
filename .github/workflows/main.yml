@@ -46,8 +46,8 @@ jobs:
             rm -rf "${temp_dir}/${basename}"
             
             echo "# Project Documentation: ${basename}" > "$output_file"
-            [ -f "${temp_dir}/README.md" ] && { echo "## 1. README" >> "$output_file"; echo '```' >> "$output_file"; cat "${temp_dir}/README.md" >> "$output_file"; echo '```' >> "$output_file"; }
-            [ -f "${temp_dir}/Design.md" ] && { echo "## 2. Design Document" >> "$output_file"; echo '```' >> "$output_file"; cat "${temp_dir}/Design.md" >> "$output_file"; echo '```' >> "$output_file"; }
+            [ -f "${temp_dir}/README.md" ] && { echo "## 1. README" >> "$output_file"; echo '```markdown' >> "$output_file"; cat "${temp_dir}/README.md" >> "$output_file"; echo '```' >> "$output_file"; }
+            [ -f "${temp_dir}/Design.md" ] && { echo "## 2. Design Document" >> "$output_file"; echo '```markdown' >> "$output_file"; cat "${temp_dir}/Design.md" >> "$output_file"; echo '```' >> "$output_file"; }
 
             echo "## 3. Project File Tree" >> "$output_file"; echo '```' >> "$output_file"
             tree "$temp_dir" -I ".git|.github|.agent.md|plan.txt|Progress.txt" >> "$output_file"
@@ -55,41 +55,49 @@ jobs:
             
             echo "## 4. Source Files" >> "$output_file"
             current_dir=""
-            find "$temp_dir" -type d -name ".git" -prune -o -type d -name ".github" -prune -o -print | sort | while read -r p; do
-              if [ -d "$p" ]; then
-                find "$p" -maxdepth 1 -type f -not -name "README.md" -not -name "Design.md" -not -name ".agent.md" -not -name "plan.txt" -not -name "Progress.txt" | sort | while read -r file; do
-                  if file -b --mime-type "$file" | grep -q "text"; then
-                    file_dir=$(dirname "$file"); [ "$file_dir" != "$current_dir" ] && current_dir="$file_dir" && echo "### Folder: \`$current_dir\`" >> "$output_file"
-                    echo "#### File: \`$file\`" >> "$output_file"; echo '```' >> "$output_file"; cat "$file" >> "$output_file"; echo "" >> $output_file; echo '```' >> "$output_file"
-                  fi
-                done; fi; done
+            
+            # --- THIS IS THE CRITICAL FIX ---
+            # A single, simple 'find' command to get a clean, sorted list of all relevant files.
+            # This is much more reliable than the previous complex loop.
+            find "$temp_dir" -type f \
+              -not -path '*/.git/*' \
+              -not -name "README.md" -not -name "Design.md" \
+              -not -name ".agent.md" -not -name "plan.txt" -not -name "Progress.txt" \
+              | sort | while read -r file; do
+                # The file type check remains the same, as it is correct.
+                if file -b --mime-type "$file" | grep -q "text"; then
+                  file_dir=$(dirname "$file"); [ "$file_dir" != "$current_dir" ] && current_dir="$file_dir" && echo "### Folder: \`$current_dir\`" >> "$output_file"
+                  echo "#### File: \`$file\`" >> "$output_file"; echo '```' >> "$output_file"; cat "$file" >> "$output_file"; echo "" >> "$output_file"; echo '```' >> "$output_file"
+                fi
+              done
+            
             rm -rf "$temp_dir"
           done
 
-      - name: 3. Move Generated Documentation to Root
+      - name: 3. Finalize and Clean Up Repository
         run: |
           if [ -d "final_docs" ] && [ "$(ls -A final_docs)" ]; then
+            echo "Documentation files were generated. Finalizing..."
             mv final_docs/* .
+            
+            if [ "${{ github.event.inputs.overwrite_repository }}" == "true" ]; then
+              echo "Overwrite is enabled. Deleting all non-documentation files..."
+              find . -mindepth 1 ! -path './.git*' ! -path './.github*' ! -name '*_documentation.md' -exec rm -rf {} +
+              echo "Cleanup complete."
+            fi
+          else
+            echo "No documentation files were generated. Skipping finalization."
           fi
           rm -rf final_docs
 
-      - name: 4. Clean Repository (if overwrite is enabled)
-        if: github.event.inputs.overwrite_repository == true
-        run: |
-          echo "Overwrite is enabled. Deleting all non-documentation files..."
-          find . -mindepth 1 ! -path './.git*' ! -path './.github*' ! -name '*_documentation.md' -exec rm -rf {} +
-          echo "Cleanup complete."
-
-      - name: 5. Commit Changes
+      - name: 4. Commit Changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # This intelligently adds all new and modified doc files, and stages deletions if overwrite was true
           git add .
           
           if [ -n "$(git status --porcelain)" ]; then
-            # Customize commit message based on the overwrite action
             if [ "${{ github.event.inputs.overwrite_repository }}" == "true" ]; then
               git commit -m "docs: Replace repository with new documentation"
             else
