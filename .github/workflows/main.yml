@@ -26,39 +26,25 @@ jobs:
 
       - name: 2. Process each specified zip file
         run: |
-          # Create a directory to hold the final documentation files
           mkdir -p final_docs
           
-          # Loop through the list of files provided in the manual trigger
           for zip_file in ${{ github.event.inputs.zip_files }}; do
-            
-            # --- ROBUSTNESS CHECK ---
-            # If the zip file doesn't exist, print a warning and skip to the next one
             if [ ! -f "$zip_file" ]; then
               echo "⚠️ Warning: Skipping '$zip_file' because it was not found."
               continue
             fi
             
             echo "--- Processing: $zip_file ---"
-            
-            # --- DYNAMIC NAMING ---
-            # Automatically determine names from the zip filename
-            # e.g., "opencode-main.zip" becomes "opencode-main"
             basename="${zip_file%.zip}"
             temp_dir="temp_${basename}"
             output_file="final_docs/${basename}_documentation.md"
             
-            # Unpack into a temporary, isolated directory
             mkdir -p "$temp_dir"
             unzip -o "$zip_file" -d "$temp_dir"
-            # Move contents from sub-folder to the temp root
             rsync -a "${temp_dir}/${basename}/" "$temp_dir/"
             rm -rf "${temp_dir}/${basename}"
             
-            # --- DOCUMENTATION GENERATION ---
             echo "# Project Documentation: ${basename}" > "$output_file"
-            
-            # This is a safe way to append content only if the source file exists
             [ -f "${temp_dir}/README.md" ] && { echo "## 1. README" >> "$output_file"; echo '```' >> "$output_file"; cat "${temp_dir}/README.md" >> "$output_file"; echo '```' >> "$output_file"; }
             [ -f "${temp_dir}/Design.md" ] && { echo "## 2. Design Document" >> "$output_file"; echo '```' >> "$output_file"; cat "${temp_dir}/Design.md" >> "$output_file"; echo '```' >> "$output_file"; }
 
@@ -81,34 +67,43 @@ jobs:
                     fi
                 done; fi; done
 
-            # Clean up the temporary directory for this zip
             rm -rf "$temp_dir"
             echo "--- Finished processing: $zip_file ---"
           done
 
-      - name: 3. DELETE EVERYTHING except the new documentation
+      - name: 3. Finalize and Clean Up Repository
         run: |
-          echo "Performing final cleanup..."
-          # Move the generated documentation to the root
-          mv final_docs/* .
-          rm -rf final_docs
+          # --- THIS IS THE CRITICAL FIX ---
+          # Check if the final_docs directory has any files in it.
+          # If not, it means no zips were processed, so we skip the cleanup.
+          if [ -d "final_docs" ] && [ "$(ls -A final_docs)" ]; then
+            echo "Documentation files were generated. Performing final cleanup..."
+            
+            # Move the generated documentation to the root
+            mv final_docs/* .
+            
+            # Find and delete everything except git, github, and the new markdown files
+            find . -mindepth 1 ! -path './.git*' ! -path './.github*' ! -name '*_documentation.md' -exec rm -rf {} +
+            
+            echo "Cleanup complete. Repository now contains only documentation."
+            ls -la
+          else
+            echo "No documentation files were generated. Skipping cleanup."
+          fi
           
-          # Find and delete everything except git, github, and the new markdown files
-          find . -mindepth 1 ! -path './.git*' ! -path './.github*' ! -name '*_documentation.md' -exec rm -rf {} +
-          echo "Cleanup complete. Repository now contains only documentation."
-          ls -la
+          # Clean up the empty final_docs directory regardless
+          rm -rf final_docs
 
       - name: 4. Commit the final documentation
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Add all remaining files (which should only be the new docs)
           git add .
           
           if [ -n "$(git status --porcelain)" ]; then
             git commit -m "docs: Generate and replace repository with new documentation"
             git push
           else
-            echo "No documentation was generated, nothing to commit."
+            echo "No changes detected, nothing to commit."
           fi
