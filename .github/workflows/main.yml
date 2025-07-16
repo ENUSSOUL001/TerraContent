@@ -7,9 +7,11 @@ on:
         required: true
         type: string
         default: 'opencode-main.zip claude-code-router-main.zip'
-  push:
-    branches:
-      - main
+      overwrite_repository:
+        description: 'If true, delete all other files and replace the repo with the generated docs.'
+        required: true
+        type: boolean
+        default: true
 
 jobs:
   build-and-document:
@@ -27,7 +29,6 @@ jobs:
       - name: 2. Process each specified zip file
         run: |
           mkdir -p final_docs
-          
           for zip_file in ${{ github.event.inputs.zip_files }}; do
             if [ ! -f "$zip_file" ]; then
               echo "⚠️ Warning: Skipping '$zip_file' because it was not found."
@@ -48,8 +49,7 @@ jobs:
             [ -f "${temp_dir}/README.md" ] && { echo "## 1. README" >> "$output_file"; echo '```' >> "$output_file"; cat "${temp_dir}/README.md" >> "$output_file"; echo '```' >> "$output_file"; }
             [ -f "${temp_dir}/Design.md" ] && { echo "## 2. Design Document" >> "$output_file"; echo '```' >> "$output_file"; cat "${temp_dir}/Design.md" >> "$output_file"; echo '```' >> "$output_file"; }
 
-            echo "## 3. Project File Tree" >> "$output_file"
-            echo '```' >> "$output_file"
+            echo "## 3. Project File Tree" >> "$output_file"; echo '```' >> "$output_file"
             tree "$temp_dir" -I ".git|.github|.agent.md|plan.txt|Progress.txt" >> "$output_file"
             echo '```' >> "$output_file"
             
@@ -57,52 +57,44 @@ jobs:
             current_dir=""
             find "$temp_dir" -type d -name ".git" -prune -o -type d -name ".github" -prune -o -print | sort | while read -r p; do
               if [ -d "$p" ]; then
-                find "$p" -maxdepth 1 -type f \
-                  -not -name "README.md" -not -name "Design.md" \
-                  -not -name ".agent.md" -not -name "plan.txt" -not -name "Progress.txt" \
-                  | sort | while read -r file; do
-                    if file -b --mime-type "$file" | grep -q "text"; then
-                      file_dir=$(dirname "$file"); [ "$file_dir" != "$current_dir" ] && current_dir="$file_dir" && echo "### Folder: \`$current_dir\`" >> "$output_file"
-                      echo "#### File: \`$file\`" >> "$output_file"; echo '```' >> "$output_file"; cat "$file" >> "$output_file"; echo "" >> $output_file; echo '```' >> "$output_file"
-                    fi
+                find "$p" -maxdepth 1 -type f -not -name "README.md" -not -name "Design.md" -not -name ".agent.md" -not -name "plan.txt" -not -name "Progress.txt" | sort | while read -r file; do
+                  if file -b --mime-type "$file" | grep -q "text"; then
+                    file_dir=$(dirname "$file"); [ "$file_dir" != "$current_dir" ] && current_dir="$file_dir" && echo "### Folder: \`$current_dir\`" >> "$output_file"
+                    echo "#### File: \`$file\`" >> "$output_file"; echo '```' >> "$output_file"; cat "$file" >> "$output_file"; echo "" >> $output_file; echo '```' >> "$output_file"
+                  fi
                 done; fi; done
-
             rm -rf "$temp_dir"
-            echo "--- Finished processing: $zip_file ---"
           done
 
-      - name: 3. Finalize and Clean Up Repository
+      - name: 3. Move Generated Documentation to Root
         run: |
-          # --- THIS IS THE CRITICAL FIX ---
-          # Check if the final_docs directory has any files in it.
-          # If not, it means no zips were processed, so we skip the cleanup.
           if [ -d "final_docs" ] && [ "$(ls -A final_docs)" ]; then
-            echo "Documentation files were generated. Performing final cleanup..."
-            
-            # Move the generated documentation to the root
             mv final_docs/* .
-            
-            # Find and delete everything except git, github, and the new markdown files
-            find . -mindepth 1 ! -path './.git*' ! -path './.github*' ! -name '*_documentation.md' -exec rm -rf {} +
-            
-            echo "Cleanup complete. Repository now contains only documentation."
-            ls -la
-          else
-            echo "No documentation files were generated. Skipping cleanup."
           fi
-          
-          # Clean up the empty final_docs directory regardless
           rm -rf final_docs
 
-      - name: 4. Commit the final documentation
+      - name: 4. Clean Repository (if overwrite is enabled)
+        if: github.event.inputs.overwrite_repository == true
+        run: |
+          echo "Overwrite is enabled. Deleting all non-documentation files..."
+          find . -mindepth 1 ! -path './.git*' ! -path './.github*' ! -name '*_documentation.md' -exec rm -rf {} +
+          echo "Cleanup complete."
+
+      - name: 5. Commit Changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
+          # This intelligently adds all new and modified doc files, and stages deletions if overwrite was true
           git add .
           
           if [ -n "$(git status --porcelain)" ]; then
-            git commit -m "docs: Generate and replace repository with new documentation"
+            # Customize commit message based on the overwrite action
+            if [ "${{ github.event.inputs.overwrite_repository }}" == "true" ]; then
+              git commit -m "docs: Replace repository with new documentation"
+            else
+              git commit -m "docs: Create/update project documentation"
+            fi
             git push
           else
             echo "No changes detected, nothing to commit."
