@@ -43,6 +43,15 @@ on:
         - Enabled
         - Enabled (with Hardmode Loot)
         default: 'Disabled'
+      starter_options:
+        description: 'Select starter home and equipment options'
+        required: true
+        type: choice
+        options:
+        - No
+        - Yes (Home Only)
+        - Yes (Home + Iron Gear)
+        default: 'No'
 
 jobs:
   generate-world:
@@ -55,8 +64,7 @@ jobs:
       - name: Generate config file from inputs
         shell: pwsh
         run: |
-          # --- Translate User-Friendly Inputs to INI values ---
-          $width = 6400; $height = 1800 # Default to Medium
+          $width = 6400; $height = 1800
           switch ("${{ github.event.inputs.size }}") {
             "Extra Small" { $width = 2100; $height = 600 }
             "Small"       { $width = 4200; $height = 1200 }
@@ -71,10 +79,7 @@ jobs:
             "Enabled (with Hardmode Loot)" { $hardmode = "true"; $hardmodeLoot = "true" }
           }
           
-          # --- Set defaults for the world type logic ---
-          $evil = "RANDOM"
-          $doubleTrouble = "false"
-          $purity = "false"
+          $evil = "RANDOM"; $doubleTrouble = "false"; $purity = "false"
           switch ("${{ github.event.inputs.evil_and_world_type }}") {
             "corruption" { $evil = "corruption" }
             "crimson"    { $evil = "crimson" }
@@ -82,7 +87,12 @@ jobs:
             "Disabled (Purity)"  { $purity = "true" }
           }
 
-          # --- Build the INI content using the processed variables ---
+          $home = "false"; $equipment = "none"
+          switch ("${{ github.event.inputs.starter_options }}") {
+            "Yes (Home Only)"        { $home = "true" }
+            "Yes (Home + Iron Gear)" { $home = "true"; $equipment = "iron" }
+          }
+
           $iniContent = @"
           [world]
           name = ${{ github.event.inputs.name }}
@@ -91,7 +101,9 @@ jobs:
           height = $height
           mode = classic
           evil = $evil
+          home = $home
           [variation]
+          equipment = $equipment
           doubleTrouble = $doubleTrouble
           purity = $purity
           hardmode = $hardmode
@@ -100,16 +112,13 @@ jobs:
           map = true
           "@
           Set-Content -Path "Terra/terra-awg.ini" -Value $iniContent
-          echo "--- terra-awg.ini created ---"
           Get-Content -Path "Terra/terra-awg.ini"
 
       - name: Run World Generator
         shell: pwsh
         run: |
           cd Terra
-          echo "--- Running Terra AWG ---"
           ./terra-awg.exe
-          echo "--- World generation complete. ---"
           cd ..
       
       - name: Upload Generated Files as Artifacts
