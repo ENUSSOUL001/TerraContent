@@ -1,0 +1,177 @@
+name: Generate Terraria World (Download Only)
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: 'World Name (use RANDOM for a random name)'
+        required: true
+        type: string
+        default: 'Terra AWG World'
+      seed:
+        description: 'World Seed (use RANDOM for a random seed)'
+        required: true
+        type: string
+        default: 'RANDOM'
+      width:
+        description: 'World Width (e.g., 4200, 6400, 8400)'
+        required: true
+        type: number
+        default: 6400
+      height:
+        description: 'World Height (e.g., 1200, 1800, 2400)'
+        required: true
+        type: number
+        default: 1800
+      mode:
+        description: 'Difficulty'
+        required: true
+        type: choice
+        options:
+          - classic
+          - expert
+          - master
+          - journey
+        default: 'classic'
+      evil:
+        description: 'World Evil'
+        required: true
+        type: choice
+        options:
+          - RANDOM
+          - corruption
+          - crimson
+        default: 'RANDOM'
+      home:
+        description: 'Add a starter home at spawn?'
+        required: true
+        type: boolean
+        default: false
+      equipment:
+        description: 'Add starter equipment at spawn?'
+        required: true
+        type: choice
+        options:
+          - none
+          - iron
+          - platinum
+          - hellstone
+          - mythril
+        default: 'none'
+      doubleTrouble:
+        description: 'Drunk World (both evils, all ores)'
+        required: true
+        type: boolean
+        default: false
+      shattered:
+        description: 'Break world into floating islands'
+        required: true
+        type: boolean
+        default: false
+      sunken:
+        description: 'Flood the world surface'
+        required: true
+        type: boolean
+        default: false
+      purity:
+        description: 'Only generate non-spreading biomes'
+        required: true
+        type: boolean
+        default: false
+      hardmode:
+        description: 'Start in Hardmode'
+        required: true
+        type: boolean
+        default: false
+      hardmodeLoot:
+        description: 'Improve chest loot for a Hardmode start'
+        required: true
+        type: boolean
+        default: false
+      patches:
+        description: 'Distribute biomes in patches'
+        required: true
+        type: boolean
+        default: false
+      forTheWorthy:
+        description: 'For The Worthy secret seed effects'
+        required: true
+        type: boolean
+        default: false
+      meteorites:
+        description: 'Number of meteorites to place'
+        required: true
+        type: number
+        default: 0
+      chests:
+        description: 'Chest frequency multiplier'
+        required: true
+        type: number
+        default: 1.0
+      traps:
+        description: 'Trap frequency multiplier ( >15 for No Traps)'
+        required: true
+        type: number
+        default: 1.0
+      map:
+        description: 'Output a .png map preview image?'
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  generate-world:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Generate config file from inputs
+        shell: pwsh
+        run: |
+          $iniContent = @"
+          [world]
+          name = ${{ github.event.inputs.name }}
+          seed = ${{ github.event.inputs.seed }}
+          width = ${{ github.event.inputs.width }}
+          height = ${{ github.event.inputs.height }}
+          mode = ${{ github.event.inputs.mode }}
+          evil = ${{ github.event.inputs.evil }}
+          home = ${{ github.event.inputs.home }}
+          [variation]
+          equipment = ${{ github.event.inputs.equipment }}
+          doubleTrouble = ${{ github.event.inputs.doubleTrouble }}
+          shattered = ${{ github.event.inputs.shattered }}
+          sunken = ${{ github.event.inputs.sunken }}
+          purity = ${{ github.event.inputs.purity }}
+          hardmode = ${{ github.event.inputs.hardmode }}
+          hardmodeLoot = ${{ github.event.inputs.hardmodeLoot }}
+          patches = ${{ github.event.inputs.patches }}
+          forTheWorthy = ${{ github.event.inputs.forTheWorthy }}
+          meteorites = ${{ github.event.inputs.meteorites }}
+          chests = ${{ github.event.inputs.chests }}
+          traps = ${{ github.event.inputs.traps }}
+          [extra]
+          map = ${{ github.event.inputs.map }}
+          "@
+          Set-Content -Path "Terra/terra-awg.ini" -Value $iniContent
+          echo "--- terra-awg.ini created ---"
+          Get-Content -Path "Terra/terra-awg.ini"
+
+      - name: Run World Generator
+        shell: pwsh
+        run: |
+          cd Terra
+          echo "--- Running Terra AWG ---"
+          ./terra-awg.exe
+          echo "--- World generation complete. ---"
+          cd ..
+      
+      - name: Upload Generated Files as Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-world-files
+          path: |
+            Terra/*.wld
+            Terra/*.png
+          if-no-files-found: error
