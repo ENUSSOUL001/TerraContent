@@ -70,14 +70,17 @@ jobs:
             "Enabled" { $hardmode = "true" }
             "Enabled (with Hardmode Loot)" { $hardmode = "true"; $hardmodeLoot = "true" }
           }
-          $home = "false"; $equipment = "none"
+          
+          # This is the fix: Renamed the variable to avoid system conflict
+          $generateHome = "false"; $equipment = "none"
           switch ("${{ github.event.inputs.starter_options }}") {
-            "Home Only"              { $home = "true" }
-            "Home + Iron Gear"       { $home = "true"; $equipment = "iron" }
-            "Home + Platinum Gear"   { $home = "true"; $equipment = "platinum" }
-            "Home + Hellstone Gear"  { $home = "true"; $equipment = "hellstone" }
-            "Home + Mythril Gear"    { $home = "true"; $equipment = "mythril" }
+            "Home Only"              { $generateHome = "true" }
+            "Home + Iron Gear"       { $generateHome = "true"; $equipment = "iron" }
+            "Home + Platinum Gear"   { $generateHome = "true"; $equipment = "platinum" }
+            "Home + Hellstone Gear"  { $generateHome = "true"; $equipment = "hellstone" }
+            "Home + Mythril Gear"    { $generateHome = "true"; $equipment = "mythril" }
           }
+          
           $options_string = "${{ github.event.inputs.world_options }}"
           $doubleTrouble = if ($options_string.Contains('1')) { "true" } else { "false" }
           $shattered = if ($options_string.Contains('2')) { "true" } else { "false" }
@@ -93,7 +96,7 @@ jobs:
           height = $height
           mode = classic
           evil = ${{ github.event.inputs.evil }}
-          home = $home
+          home = $generateHome
           [variation]
           equipment = $equipment
           doubleTrouble = $doubleTrouble
