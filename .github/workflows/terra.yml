@@ -34,16 +34,6 @@ on:
         type: choice
         options: [RANDOM, corruption, crimson]
         default: 'RANDOM'
-      frequency_multiplier:
-        description: 'MASTER MULTIPLIER for all frequencies (ore, chests, gems, etc.)'
-        required: true
-        type: number
-        default: 1.0
-      size_multiplier:
-        description: 'MASTER MULTIPLIER for all sizes (dungeon, temple, evil, etc.)'
-        required: true
-        type: number
-        default: 1.0
       home:
         description: 'Add a starter home at spawn?'
         required: true
@@ -60,16 +50,241 @@ on:
         required: true
         type: boolean
         default: false
+      shattered:
+        description: 'Break world into floating islands'
+        required: true
+        type: boolean
+        default: false
+      sunken:
+        description: 'Flood the world surface'
+        required: true
+        type: boolean
+        default: false
+      purity:
+        description: 'Only generate non-spreading biomes'
+        required: true
+        type: boolean
+        default: false
       hardmode:
         description: 'Start in Hardmode'
         required: true
         type: boolean
         default: false
+      hardmodeLoot:
+        description: 'Improve chest loot for a Hardmode start'
+        required: true
+        type: boolean
+        default: false
+      patches:
+        description: 'Distribute biomes in patches'
+        required: true
+        type: boolean
+        default: false
+      patchesHumidity:
+        description: 'Tuning for biome patches humidity (-0.5 to 0.5)'
+        required: true
+        type: number
+        default: 0.0
+      patchesTemperature:
+        description: 'Tuning for biome patches temperature (-0.5 to 0.5)'
+        required: true
+        type: number
+        default: 0.0
+      patchesSize:
+        description: 'How rapidly to transition biomes for patches'
+        required: true
+        type: number
+        default: 1.0
       forTheWorthy:
         description: 'For The Worthy secret seed effects'
         required: true
         type: boolean
         default: false
+      meteorites:
+        description: 'Number of meteorites to place'
+        required: true
+        type: number
+        default: 0
+      meteoriteSize:
+        description: 'Size multiplier for meteorites'
+        required: true
+        type: number
+        default: 1.0
+      ore:
+        description: 'Multiplier for ore frequency'
+        required: true
+        type: number
+        default: 1.0
+      lifeCrystals:
+        description: 'Multiplier for Life Crystal frequency'
+        required: true
+        type: number
+        default: 1.0
+      manaCrystals:
+        description: 'Multiplier for Mana Crystal frequency'
+        required: true
+        type: number
+        default: 1.0
+      pots:
+        description: 'Multiplier for pot frequency'
+        required: true
+        type: number
+        default: 1.0
+      chests:
+        description: 'Multiplier for chest frequency'
+        required: true
+        type: number
+        default: 1.0
+      gems:
+        description: 'Multiplier for gem frequency'
+        required: true
+        type: number
+        default: 1.0
+      traps:
+        description: 'Multiplier for trap frequency (>15 for No Traps)'
+        required: true
+        type: number
+        default: 1.0
+      trees:
+        description: 'Multiplier for tree frequency'
+        required: true
+        type: number
+        default: 1.0
+      livingTrees:
+        description: 'Multiplier for Living Tree frequency'
+        required: true
+        type: number
+        default: 1.0
+      clouds:
+        description: 'Multiplier for cloud island frequency'
+        required: true
+        type: number
+        default: 1.0
+      asteroids:
+        description: 'Multiplier for asteroid frequency'
+        required: true
+        type: number
+        default: 1.0
+      minecartTracks:
+        description: 'Multiplier for minecart track frequency'
+        required: true
+        type: number
+        default: 1.0
+      minecartLength:
+        description: 'Multiplier for minecart track length'
+        required: true
+        type: number
+        default: 1.0
+      aetherSize:
+        description: 'Multiplier for Aether biome size'
+        required: true
+        type: number
+        default: 1.0
+      dungeonSize:
+        description: 'Multiplier for Dungeon size'
+        required: true
+        type: number
+        default: 1.0
+      templeSize:
+        description: 'Multiplier for Jungle Temple size'
+        required: true
+        type: number
+        default: 1.0
+      evilSize:
+        description: 'Multiplier for evil biome size'
+        required: true
+        type: number
+        default: 1.0
+      oceanSize:
+        description: 'Multiplier for Ocean size'
+        required: true
+        type: number
+        default: 1.0
+      oceanCaveSize:
+        description: 'Multiplier for Ocean Cave size'
+        required: true
+        type: number
+        default: 1.0
+      marbleFreq:
+        description: 'Multiplier for Marble Cave frequency'
+        required: true
+        type: number
+        default: 1.0
+      marbleSize:
+        description: 'Multiplier for Marble Cave size'
+        required: true
+        type: number
+        default: 1.0
+      graniteFreq:
+        description: 'Multiplier for Granite Cave frequency'
+        required: true
+        type: number
+        default: 1.0
+      graniteSize:
+        description: 'Multiplier for Granite Cave size'
+        required: true
+        type: number
+        default: 1.0
+      glowingMushroomFreq:
+        description: 'Multiplier for Glowing Mushroom biome frequency'
+        required: true
+        type: number
+        default: 1.0
+      glowingMushroomSize:
+        description: 'Multiplier for Glowing Mushroom biome size'
+        required: true
+        type: number
+        default: 1.0
+      hiveFreq:
+        description: 'Multiplier for Bee Hive frequency'
+        required: true
+        type: number
+        default: 1.0
+      hiveSize:
+        description: 'Multiplier for Bee Hive size'
+        required: true
+        type: number
+        default: 1.0
+      spiderNestFreq:
+        description: 'Multiplier for Spider Nest frequency'
+        required: true
+        type: number
+        default: 1.0
+      spiderNestSize:
+        description: 'Multiplier for Spider Nest size'
+        required: true
+        type: number
+        default: 1.0
+      glowingMossFreq:
+        description: 'Multiplier for Glowing Moss cave frequency'
+        required: true
+        type: number
+        default: 1.0
+      glowingMossSize:
+        description: 'Multiplier for Glowing Moss cave size'
+        required: true
+        type: number
+        default: 1.0
+      snowSize:
+        description: 'Multiplier for Snow biome size'
+        required: true
+        type: number
+        default: 1.0
+      desertSize:
+        description: 'Multiplier for Desert biome size'
+        required: true
+        type: number
+        default: 1.0
+      jungleSize:
+        description: 'Multiplier for Jungle biome size'
+        required: true
+        type: number
+        default: 1.0
+      surfaceAmplitude:
+        description: 'Controls how flat/mountainous the surface is'
+        required: true
+        type: number
+        default: 1.0
       map:
         description: 'Output a .png map preview image?'
         required: true
@@ -99,41 +314,53 @@ jobs:
           [variation]
           equipment = ${{ github.event.inputs.equipment }}
           doubleTrouble = ${{ github.event.inputs.doubleTrouble }}
+          shattered = ${{ github.event.inputs.shattered }}
+          sunken = ${{ github.event.inputs.sunken }}
+          purity = ${{ github.event.inputs.purity }}
           hardmode = ${{ github.event.inputs.hardmode }}
+          hardmodeLoot = ${{ github.event.inputs.hardmodeLoot }}
+          patches = ${{ github.event.inputs.patches }}
+          patchesHumidity = ${{ github.event.inputs.patchesHumidity }}
+          patchesTemperature = ${{ github.event.inputs.patchesTemperature }}
+          patchesSize = ${{ github.event.inputs.patchesSize }}
           forTheWorthy = ${{ github.event.inputs.forTheWorthy }}
-          ore = ${{ github.event.inputs.frequency_multiplier }}
-          lifeCrystals = ${{ github.event.inputs.frequency_multiplier }}
-          manaCrystals = ${{ github.event.inputs.frequency_multiplier }}
-          pots = ${{ github.event.inputs.frequency_multiplier }}
-          chests = ${{ github.event.inputs.frequency_multiplier }}
-          gems = ${{ github.event.inputs.frequency_multiplier }}
-          traps = ${{ github.event.inputs.frequency_multiplier }}
-          trees = ${{ github.event.inputs.frequency_multiplier }}
-          livingTrees = ${{ github.event.inputs.frequency_multiplier }}
-          clouds = ${{ github.event.inputs.frequency_multiplier }}
-          asteroids = ${{ github.event.inputs.frequency_multiplier }}
-          minecartTracks = ${{ github.event.inputs.frequency_multiplier }}
-          marbleFreq = ${{ github.event.inputs.frequency_multiplier }}
-          graniteFreq = ${{ github.event.inputs.frequency_multiplier }}
-          glowingMushroomFreq = ${{ github.event.inputs.frequency_multiplier }}
-          hiveFreq = ${{ github.event.inputs.frequency_multiplier }}
-          spiderNestFreq = ${{ github.event.inputs.frequency_multiplier }}
-          glowingMossFreq = ${{ github.event.inputs.frequency_multiplier }}
-          dungeonSize = ${{ github.event.inputs.size_multiplier }}
-          templeSize = ${{ github.event.inputs.size_multiplier }}
-          evilSize = ${{ github.event.inputs.size_multiplier }}
-          oceanSize = ${{ github.event.inputs.size_multiplier }}
-          oceanCaveSize = ${{ github.event.inputs.size_multiplier }}
-          marbleSize = ${{ github.event.inputs.size_multiplier }}
-          graniteSize = ${{ github.event.inputs.size_multiplier }}
-          glowingMushroomSize = ${{ github.event.inputs.size_multiplier }}
-          hiveSize = ${{ github.event.inputs.size_multiplier }}
-          spiderNestSize = ${{ github.event.inputs.size_multiplier }}
-          glowingMossSize = ${{ github.event.inputs.size_multiplier }}
-          snowSize = ${{ github.event.inputs.size_multiplier }}
-          desertSize = ${{ github.event.inputs.size_multiplier }}
-          jungleSize = ${{ github.event.inputs.size_multiplier }}
-          aetherSize = ${{ github.event.inputs.size_multiplier }}
+          meteorites = ${{ github.event.inputs.meteorites }}
+          meteoriteSize = ${{ github.event.inputs.meteoriteSize }}
+          ore = ${{ github.event.inputs.ore }}
+          lifeCrystals = ${{ github.event.inputs.lifeCrystals }}
+          manaCrystals = ${{ github.event.inputs.manaCrystals }}
+          pots = ${{ github.event.inputs.pots }}
+          chests = ${{ github.event.inputs.chests }}
+          gems = ${{ github.event.inputs.gems }}
+          traps = ${{ github.event.inputs.traps }}
+          trees = ${{ github.event.inputs.trees }}
+          livingTrees = ${{ github.event.inputs.livingTrees }}
+          clouds = ${{ github.event.inputs.clouds }}
+          asteroids = ${{ github.event.inputs.asteroids }}
+          minecartTracks = ${{ github.event.inputs.minecartTracks }}
+          minecartLength = ${{ github.event.inputs.minecartLength }}
+          aetherSize = ${{ github.event.inputs.aetherSize }}
+          dungeonSize = ${{ github.event.inputs.dungeonSize }}
+          templeSize = ${{ github.event.inputs.templeSize }}
+          evilSize = ${{ github.event.inputs.evilSize }}
+          oceanSize = ${{ github.event.inputs.oceanSize }}
+          oceanCaveSize = ${{ github.event.inputs.oceanCaveSize }}
+          marbleFreq = ${{ github.event.inputs.marbleFreq }}
+          marbleSize = ${{ github.event.inputs.marbleSize }}
+          graniteFreq = ${{ github.event.inputs.graniteFreq }}
+          graniteSize = ${{ github.event.inputs.graniteSize }}
+          glowingMushroomFreq = ${{ github.event.inputs.glowingMushroomFreq }}
+          glowingMushroomSize = ${{ github.event.inputs.glowingMushroomSize }}
+          hiveFreq = ${{ github.event.inputs.hiveFreq }}
+          hiveSize = ${{ github.event.inputs.hiveSize }}
+          spiderNestFreq = ${{ github.event.inputs.spiderNestFreq }}
+          spiderNestSize = ${{ github.event.inputs.spiderNestSize }}
+          glowingMossFreq = ${{ github.event.inputs.glowingMossFreq }}
+          glowingMossSize = ${{ github.event.inputs.glowingMossSize }}
+          snowSize = ${{ github.event.inputs.snowSize }}
+          desertSize = ${{ github.event.inputs.desertSize }}
+          jungleSize = ${{ github.event.inputs.jungleSize }}
+          surfaceAmplitude = ${{ github.event.inputs.surfaceAmplitude }}
           [extra]
           map = ${{ github.event.inputs.map }}
           "@
