@@ -23,11 +23,16 @@ on:
         - Large
         - Extra Large
         default: 'Medium'
-      evil:
-        description: 'Select the world evil'
+      evil_and_world_type:
+        description: 'Select the evil biome or a special world type'
         required: true
         type: choice
-        options: [RANDOM, corruption, crimson]
+        options:
+        - RANDOM
+        - corruption
+        - crimson
+        - Both (Drunk World)
+        - Disabled (Purity)
         default: 'RANDOM'
       hardmode_options:
         description: 'Select a Hardmode option'
@@ -38,30 +43,6 @@ on:
         - Enabled
         - Enabled (with Hardmode Loot)
         default: 'Disabled'
-      doubleTrouble:
-        description: '[World Option] Drunk World (both evils/ores)'
-        type: boolean
-        default: false
-      shattered:
-        description: '[World Option] Shattered world into floating islands'
-        type: boolean
-        default: false
-      sunken:
-        description: '[World Option] Sunken world (flooded surface)'
-        type: boolean
-        default: false
-      purity:
-        description: '[World Option] Pure world (no spreading biomes)'
-        type: boolean
-        default: false
-      forTheWorthy:
-        description: '[World Option] For The Worthy effects'
-        type: boolean
-        default: false
-      noTraps:
-        description: '[World Option] No Traps seed effects'
-        type: boolean
-        default: false
 
 jobs:
   generate-world:
@@ -90,12 +71,18 @@ jobs:
             "Enabled (with Hardmode Loot)" { $hardmode = "true"; $hardmodeLoot = "true" }
           }
           
-          $traps = 1.0
-          if ("${{ github.event.inputs.noTraps }}" -eq "true") {
-            $traps = 15.0
+          # --- Set defaults for the world type logic ---
+          $evil = "RANDOM"
+          $doubleTrouble = "false"
+          $purity = "false"
+          switch ("${{ github.event.inputs.evil_and_world_type }}") {
+            "corruption" { $evil = "corruption" }
+            "crimson"    { $evil = "crimson" }
+            "Both (Drunk World)" { $doubleTrouble = "true" }
+            "Disabled (Purity)"  { $purity = "true" }
           }
 
-          # --- Build the INI content ---
+          # --- Build the INI content using the processed variables ---
           $iniContent = @"
           [world]
           name = ${{ github.event.inputs.name }}
@@ -103,19 +90,12 @@ jobs:
           width = $width
           height = $height
           mode = classic
-          evil = ${{ github.event.inputs.evil }}
-          home = false
+          evil = $evil
           [variation]
-          equipment = none
-          doubleTrouble = ${{ github.event.inputs.doubleTrouble }}
-          shattered = ${{ github.event.inputs.shattered }}
-          sunken = ${{ github.event.inputs.sunken }}
-          purity = ${{ github.event.inputs.purity }}
+          doubleTrouble = $doubleTrouble
+          purity = $purity
           hardmode = $hardmode
           hardmodeLoot = $hardmodeLoot
-          patches = false
-          forTheWorthy = ${{ github.event.inputs.forTheWorthy }}
-          traps = $traps
           [extra]
           map = true
           "@
