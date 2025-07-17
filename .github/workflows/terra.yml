@@ -16,50 +16,43 @@ on:
         description: 'Select a world size'
         required: true
         type: choice
-        options:
-        - Extra Small
-        - Small
-        - Medium
-        - Large
-        - Extra Large
+        options: [Extra Small, Small, Medium, Large, Extra Large]
         default: 'Medium'
-      evil_and_world_type:
-        description: 'Select the evil biome or a special world type'
+      evil:
+        description: 'Select the world evil'
         required: true
         type: choice
-        options:
-        - RANDOM
-        - corruption
-        - crimson
-        - Both (Drunk World)
-        - Disabled (Purity)
+        options: [RANDOM, corruption, crimson]
         default: 'RANDOM'
       hardmode_options:
         description: 'Select a Hardmode option'
         required: true
         type: choice
-        options:
-        - Disabled
-        - Enabled
-        - Enabled (with Hardmode Loot)
+        options: [Disabled, Enabled, 'Enabled (with Hardmode Loot)']
         default: 'Disabled'
       starter_options:
         description: 'Select starter home and equipment options'
         required: true
         type: choice
         options:
-        - No
-        - Yes (Home Only)
-        - Yes (Home + Iron Gear)
+        - 'No'
+        - 'Home Only'
+        - 'Home + Iron Gear'
+        - 'Home + Platinum Gear'
+        - 'Home + Hellstone Gear'
+        - 'Home + Mythril Gear'
         default: 'No'
+      world_options:
+        description: 'Enter numbers for options (e.g., 13). 1=Drunk, 2=Shattered, 3=FTW, 4=Sunken, 5=Purity'
+        required: false
+        type: string
 
 jobs:
   generate-world:
     runs-on: windows-latest
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Generate config file from inputs
         shell: pwsh
@@ -72,26 +65,25 @@ jobs:
             "Large"       { $width = 8400; $height = 2400 }
             "Extra Large" { $width = 12600; $height = 3600 }
           }
-
           $hardmode = "false"; $hardmodeLoot = "false"
           switch ("${{ github.event.inputs.hardmode_options }}") {
             "Enabled" { $hardmode = "true" }
             "Enabled (with Hardmode Loot)" { $hardmode = "true"; $hardmodeLoot = "true" }
           }
-          
-          $evil = "RANDOM"; $doubleTrouble = "false"; $purity = "false"
-          switch ("${{ github.event.inputs.evil_and_world_type }}") {
-            "corruption" { $evil = "corruption" }
-            "crimson"    { $evil = "crimson" }
-            "Both (Drunk World)" { $doubleTrouble = "true" }
-            "Disabled (Purity)"  { $purity = "true" }
-          }
-
           $home = "false"; $equipment = "none"
           switch ("${{ github.event.inputs.starter_options }}") {
-            "Yes (Home Only)"        { $home = "true" }
-            "Yes (Home + Iron Gear)" { $home = "true"; $equipment = "iron" }
+            "Home Only"              { $home = "true" }
+            "Home + Iron Gear"       { $home = "true"; $equipment = "iron" }
+            "Home + Platinum Gear"   { $home = "true"; $equipment = "platinum" }
+            "Home + Hellstone Gear"  { $home = "true"; $equipment = "hellstone" }
+            "Home + Mythril Gear"    { $home = "true"; $equipment = "mythril" }
           }
+          $options_string = "${{ github.event.inputs.world_options }}"
+          $doubleTrouble = if ($options_string.Contains('1')) { "true" } else { "false" }
+          $shattered = if ($options_string.Contains('2')) { "true" } else { "false" }
+          $forTheWorthy = if ($options_string.Contains('3')) { "true" } else { "false" }
+          $sunken = if ($options_string.Contains('4')) { "true" } else { "false" }
+          $purity = if ($options_string.Contains('5')) { "true" } else { "false" }
 
           $iniContent = @"
           [world]
@@ -100,12 +92,15 @@ jobs:
           width = $width
           height = $height
           mode = classic
-          evil = $evil
+          evil = ${{ github.event.inputs.evil }}
           home = $home
           [variation]
           equipment = $equipment
           doubleTrouble = $doubleTrouble
+          shattered = $shattered
+          sunken = $sunken
           purity = $purity
+          forTheWorthy = $forTheWorthy
           hardmode = $hardmode
           hardmodeLoot = $hardmodeLoot
           [extra]
@@ -115,13 +110,16 @@ jobs:
           Get-Content -Path "Terra/terra-awg.ini"
 
       - name: Run World Generator
+        id: run_generator
+        continue-on-error: true
         shell: pwsh
         run: |
           cd Terra
           ./terra-awg.exe
           cd ..
-      
-      - name: Upload Generated Files as Artifacts
+
+      - name: Upload Success Artifact
+        if: steps.run_generator.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: generated-world-files
@@ -129,3 +127,15 @@ jobs:
             Terra/*.wld
             Terra/*.png
           if-no-files-found: error
+
+      - name: Handle Generation Failure
+        if: steps.run_generator.outcome == 'failure'
+        run: |
+          echo "The world generator failed. Check the 'Run World Generator' step logs for details." > "Cant do it.txt"
+      
+      - name: Upload Failure Artifact
+        if: steps.run_generator.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: generator-failed
+          path: Cant do it.txt
