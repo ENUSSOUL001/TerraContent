@@ -2,6 +2,11 @@ name: TerraAWG Runner
 on:
   workflow_dispatch:
     inputs:
+      use_custom_ini:
+        description: 'Bypass all options below and use the existing Terra/terra-awg.ini in the repo?'
+        required: true
+        type: boolean
+        default: false
       name:
         description: 'World Name (use RANDOM for a random name)'
         required: true
@@ -55,6 +60,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Generate config file from inputs
+        if: github.event.inputs.use_custom_ini == false
         shell: pwsh
         run: |
           $width = 6400; $height = 1800
@@ -70,8 +76,6 @@ jobs:
             "Enabled" { $hardmode = "true" }
             "Enabled (with Hardmode Loot)" { $hardmode = "true"; $hardmodeLoot = "true" }
           }
-          
-          # This is the fix: Renamed the variable to avoid system conflict
           $generateHome = "false"; $equipment = "none"
           switch ("${{ github.event.inputs.starter_options }}") {
             "Home Only"              { $generateHome = "true" }
@@ -80,7 +84,6 @@ jobs:
             "Home + Hellstone Gear"  { $generateHome = "true"; $equipment = "hellstone" }
             "Home + Mythril Gear"    { $generateHome = "true"; $equipment = "mythril" }
           }
-          
           $options_string = "${{ github.event.inputs.world_options }}"
           $doubleTrouble = if ($options_string.Contains('1')) { "true" } else { "false" }
           $shattered = if ($options_string.Contains('2')) { "true" } else { "false" }
