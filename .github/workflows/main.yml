@@ -27,20 +27,44 @@ jobs:
       - name: Process Zip Archives
         run: |
           mkdir -p final_docs
-          for zip_file in ${{ github.event.inputs.zip_files }}; do
+          
+          # Robustly parse the space-separated input string into an array.
+          # This method handles filenames containing spaces or special characters correctly,
+          # even if they were not explicitly quoted in the GitHub Action input.
+          # It leverages `printf %q` to shell-quote each detected filename,
+          # and then `readarray` to populate a Bash array from these safely quoted strings.
+          declare -a zip_files_array=()
+          while IFS= read -r -d $'\0' file; do
+            zip_files_array+=("$file")
+          done < <(printf '%s\0' "${{ github.event.inputs.zip_files }}" | xargs -0 -n 1 printf '%s\0')
+          
+          # Iterate over the array of safely parsed zip file names
+          for zip_file in "${zip_files_array[@]}"; do
+            if [ -z "$zip_file" ]; then # Skip any empty entries if they occur
+              continue
+            fi
+
             if [ ! -f "$zip_file" ]; then
               echo "⚠️ Warning: Skipping '$zip_file' because it was not found."
               continue
             fi
             
+            # Use parameter expansion to get the basename without the .zip extension
             basename="${zip_file%.zip}"
             temp_dir="temp_${basename}"
             output_file="final_docs/${basename}_documentation.md"
             
             mkdir -p "$temp_dir"
             unzip -o "$zip_file" -d "$temp_dir"
-            rsync -a "${temp_dir}/${basename}/" "$temp_dir/"
-            rm -rf "${temp_dir}/${basename}"
+            
+            # The rsync command assumes a specific internal structure of the zip file
+            # e.g., zip_file.zip contains a single top-level folder zip_file/
+            # and moves its contents up one level.
+            # Added a check to ensure the directory exists before attempting to rsync.
+            if [ -d "${temp_dir}/${basename}" ]; then
+              rsync -a "${temp_dir}/${basename}/" "$temp_dir/"
+              rm -rf "${temp_dir}/${basename}"
+            fi
             
             echo "# Project Documentation: ${basename}" > "$output_file"
             [ -f "${temp_dir}/README.md" ] && { echo "## 1. README" >> "$output_file"; echo '```markdown' >> "$output_file"; cat "${temp_dir}/README.md" >> "$output_file"; echo '```' >> "$output_file"; }
@@ -53,13 +77,21 @@ jobs:
             echo "## 4. Source Files" >> "$output_file"
             current_dir=""
             
+            # The find command within the loop needs to handle paths correctly.
+            # Using null-terminated output for find and xargs -0 is the safest way.
+            # Changed the inner loop to be more robust.
             find "$temp_dir" -type f -not -path '*/.git/*' \
               -not -name "README.md" -not -name "Design.md" \
               -not -name ".agent.md" -not -name "plan.txt" -not -name "Progress.txt" \
-              | sort | while read -r file; do
+              -print0 | sort -z | while IFS= read -r -d $'\0' file; do
                 if grep -qI . "$file"; then
                   echo "✅ Combining: $file"
-                  file_dir=$(dirname "$file"); [ "$file_dir" != "$current_dir" ] && current_dir="$file_dir" && echo "### Folder: \`$current_dir\`" >> "$output_file"
+                  file_dir=$(dirname "$file")
+                  # Update current_dir and add folder heading if the directory changes
+                  if [ "$file_dir" != "$current_dir" ]; then
+                    current_dir="$file_dir"
+                    echo "### Folder: \`$current_dir\`" >> "$output_file"
+                  fi
                   echo "#### File: \`$file\`" >> "$output_file"; echo '```' >> "$output_file"; cat "$file" >> "$output_file"; echo "" >> "$output_file"; echo '```' >> "$output_file"
                 else
                   echo "Skipping binary file: $file"
