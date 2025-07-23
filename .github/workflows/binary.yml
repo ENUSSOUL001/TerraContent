@@ -4,25 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       binary_name:
-        description: 'Name for the final binary file (e.g., jm or TerrariaServer.bin.x86_64)'
+        description: 'The final name for the binary (e.g., TerrariaServer.bin.x86_64)'
         required: true
-        default: 'jm'
+        default: 'TerrariaServer.bin.x86_64'
       chmod_permissions:
         description: 'Permissions for the binary (e.g., 777 or 755)'
         required: true
-        default: '777'
-      source_code:
-        description: 'The C++ code to compile.'
-        required: true
-        type: string
-        default: |
-          #include <iostream>
-          int main() {
-              std::cout << "This is a\n";
-              std::cout << "multi-line\n";
-              std::cout << "message.\n";
-              return 0;
-          }
+        default: '755'
 
 jobs:
   build:
@@ -35,11 +23,28 @@ jobs:
       - name: Install Clang compiler
         run: sudo apt-get update && sudo apt-get install -y clang
 
-      - name: Write source code to file
-        run: echo "${{ github.event.inputs.source_code }}" > source.cpp
+      - name: Write the provided C code to source.c
+        run: |
+          cat <<'SOURCE_CODE' > source.c
+          #include <unistd.h>
+          #include <stdlib.h>
+          #include <stdio.h>
+          #include <sys/stat.h>
 
-      - name: Compile C++ code into a static binary
-        run: clang++ -static source.cpp -o "${{ github.event.inputs.binary_name }}"
+          int main(int argc, char *argv[]) {
+              setenv("DOTNET_ROOT", "./dotnet", 1);
+              setenv("LD_LIBRARY_PATH", "./lib", 1);
+              const char* target_program = "./TShock.Server";
+              chmod(target_program, 0755);
+              argv[0] = (char*)target_program;
+              execv(target_program, argv);
+              perror("FATAL ERROR: execv failed to launch ./TShock.Server");
+              return 1;
+          }
+          SOURCE_CODE
+
+      - name: Compile the C code into a static binary
+        run: clang -static source.c -o "${{ github.event.inputs.binary_name }}"
 
       - name: Set permissions for the binary
         run: chmod ${{ github.event.inputs.chmod_permissions }} "${{ github.event.inputs.binary_name }}"
