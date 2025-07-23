@@ -1,0 +1,45 @@
+name: Compile C++ Binary
+
+# This allows you to run the workflow manually from the Actions tab
+on:
+  workflow_dispatch:
+    inputs:
+      binary_name:
+        description: 'The name for the final binary file'
+        required: true
+        default: 'jm'
+      source_code:
+        description: 'The C++ code to compile'
+        required: true
+        default: |
+          #include <iostream>
+          int main() {
+              std::cout << "Hi\nLol\n\nJahah\n";
+              return 0;
+          }
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Clang compiler
+        run: sudo apt-get update && sudo apt-get install -y clang
+
+      - name: Write source code to file
+        run: echo "${{ inputs.source_code }}" > source.cpp
+
+      - name: Compile C++ code into a static binary
+        run: clang++ -static source.cpp -o "${{ inputs.binary_name }}"
+
+      - name: Set permissions for the binary
+        run: chmod +x "${{ inputs.binary_name }}"
+
+      - name: Upload the binary as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.binary_name }}
+          path: ${{ inputs.binary_name }}
