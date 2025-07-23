@@ -1,20 +1,26 @@
 name: Compile C++ Binary
 
-# This allows you to run the workflow manually from the Actions tab
 on:
   workflow_dispatch:
     inputs:
       binary_name:
-        description: 'The name for the final binary file'
+        description: 'Name for the final binary file (e.g., jm or TerrariaServer.bin.x86_64)'
         required: true
         default: 'jm'
-      source_code:
-        description: 'The C++ code to compile'
+      chmod_permissions:
+        description: 'Permissions for the binary (e.g., 777 or 755)'
         required: true
+        default: '777'
+      source_code:
+        description: 'The C++ code to compile.'
+        required: true
+        type: string
         default: |
           #include <iostream>
           int main() {
-              std::cout << "Hi\nLol\n\nJahah\n";
+              std::cout << "This is a\n";
+              std::cout << "multi-line\n";
+              std::cout << "message.\n";
               return 0;
           }
 
@@ -30,16 +36,16 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y clang
 
       - name: Write source code to file
-        run: echo "${{ inputs.source_code }}" > source.cpp
+        run: echo "${{ github.event.inputs.source_code }}" > source.cpp
 
       - name: Compile C++ code into a static binary
-        run: clang++ -static source.cpp -o "${{ inputs.binary_name }}"
+        run: clang++ -static source.cpp -o "${{ github.event.inputs.binary_name }}"
 
       - name: Set permissions for the binary
-        run: chmod +x "${{ inputs.binary_name }}"
+        run: chmod ${{ github.event.inputs.chmod_permissions }} "${{ github.event.inputs.binary_name }}"
 
       - name: Upload the binary as an artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.binary_name }}
-          path: ${{ inputs.binary_name }}
+          name: ${{ github.event.inputs.binary_name }}
+          path: ${{ github.event.inputs.binary_name }}
