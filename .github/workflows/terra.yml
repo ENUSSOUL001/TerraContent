@@ -123,25 +123,31 @@ jobs:
 
       - name: Run World Generator
         id: run_generator
-        timeout-minutes: 30
         shell: bash
         run: |
           max_attempts=14
           for ((attempt=1; attempt<=max_attempts; attempt++)); do
-            echo "Running world generator, attempt $attempt of $max_attempts..."
-            # Execute the command in a subshell to contain the 'cd'
-            (cd Terra && ./terra-awg)
+            echo "Running world generator, attempt $attempt of $max_attempts (30 minute timeout)..."
+            # Use the 'timeout' command to enforce a 30-minute limit for THIS attempt.
+            # We use 'bash -c' so we can run two commands ('cd' and the executable) under the timeout.
+            timeout 30m bash -c 'cd Terra && ./terra-awg'
             exit_code=$?
+
             if [ $exit_code -eq 0 ]; then
               echo "World generator succeeded on attempt $attempt."
               exit 0
+            elif [ $exit_code -eq 124 ]; then
+              echo "Attempt $attempt failed: Timed out after 30 minutes."
+            else
+              echo "Attempt $attempt failed with a different error (exit code $exit_code)."
             fi
-            echo "Attempt $attempt failed with exit code $exit_code."
+
             if [ $attempt -lt $max_attempts ]; then
-              echo "Waiting 20 seconds before next attempt..."
+              echo "Waiting a few seconds before the next attempt..."
               sleep 20
             fi
           done
+
           echo "All $max_attempts attempts failed."
           exit 1
 
@@ -158,11 +164,11 @@ jobs:
       - name: Handle Generation Failure
         if: failure()
         run: |
-          echo "The world generator failed after 14 attempts. Check the 'Run World Generator' step logs for details." > "Cant do it.txt"
+          echo "The world generator failed after all 14 attempts. Check the 'Run World Generator' step logs for details." > "generator-failure-log.txt"
 
       - name: Upload Failure Artifact
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: generator-failed
-          path: Cant do it.txt
+          path: generator-failure-log.txt
