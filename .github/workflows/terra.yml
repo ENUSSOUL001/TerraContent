@@ -1,4 +1,4 @@
-name: TerraAWG Runner
+name: TerraAWG Runner (Ubuntu)
 on:
   workflow_dispatch:
     inputs:
@@ -54,44 +54,50 @@ on:
 
 jobs:
   generate-world:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Make TerraAWG executable
+        run: chmod +x Terra/terra-awg
+
       - name: Generate config file from inputs
         if: github.event.inputs.use_custom_ini == false
-        shell: pwsh
+        shell: bash
         run: |
-          $width = 6400; $height = 1800
-          switch ("${{ github.event.inputs.size }}") {
-            "Extra Small" { $width = 2100; $height = 600 }
-            "Small"       { $width = 4200; $height = 1200 }
-            "Medium"      { $width = 6400; $height = 1800 }
-            "Large"       { $width = 8400; $height = 2400 }
-            "Extra Large" { $width = 12600; $height = 3600 }
-          }
-          $hardmode = "false"; $hardmodeLoot = "false"
-          switch ("${{ github.event.inputs.hardmode_options }}") {
-            "Enabled" { $hardmode = "true" }
-            "Enabled (with Hardmode Loot)" { $hardmode = "true"; $hardmodeLoot = "true" }
-          }
-          $generateHome = "false"; $equipment = "none"
-          switch ("${{ github.event.inputs.starter_options }}") {
-            "Home Only"              { $generateHome = "true" }
-            "Home + Iron Gear"       { $generateHome = "true"; $equipment = "iron" }
-            "Home + Platinum Gear"   { $generateHome = "true"; $equipment = "platinum" }
-            "Home + Hellstone Gear"  { $generateHome = "true"; $equipment = "hellstone" }
-            "Home + Mythril Gear"    { $generateHome = "true"; $equipment = "mythril" }
-          }
-          $options_string = "${{ github.event.inputs.world_options }}"
-          $doubleTrouble = if ($options_string.Contains('1')) { "true" } else { "false" }
-          $shattered = if ($options_string.Contains('2')) { "true" } else { "false" }
-          $forTheWorthy = if ($options_string.Contains('3')) { "true" } else { "false" }
-          $sunken = if ($options_string.Contains('4')) { "true" } else { "false" }
-          $purity = if ($options_string.Contains('5')) { "true" } else { "false" }
+          width=6400; height=1800
+          case "${{ github.event.inputs.size }}" in
+            "Extra Small") width=2100; height=600 ;;
+            "Small")       width=4200; height=1200 ;;
+            "Medium")      width=6400; height=1800 ;;
+            "Large")       width=8400; height=2400 ;;
+            "Extra Large") width=12600; height=3600 ;;
+          esac
 
-          $iniContent = @"
+          hardmode="false"; hardmodeLoot="false"
+          case "${{ github.event.inputs.hardmode_options }}" in
+            "Enabled") hardmode="true" ;;
+            "Enabled (with Hardmode Loot)") hardmode="true"; hardmodeLoot="true" ;;
+          esac
+
+          generateHome="false"; equipment="none"
+          case "${{ github.event.inputs.starter_options }}" in
+            "Home Only")              generateHome="true" ;;
+            "Home + Iron Gear")       generateHome="true"; equipment="iron" ;;
+            "Home + Platinum Gear")   generateHome="true"; equipment="platinum" ;;
+            "Home + Hellstone Gear")  generateHome="true"; equipment="hellstone" ;;
+            "Home + Mythril Gear")    generateHome="true"; equipment="mythril" ;;
+          esac
+
+          options_string="${{ github.event.inputs.world_options }}"
+          doubleTrouble="false"; if [[ "$options_string" == *"1"* ]]; then doubleTrouble="true"; fi
+          shattered="false"; if [[ "$options_string" == *"2"* ]]; then shattered="true"; fi
+          forTheWorthy="false"; if [[ "$options_string" == *"3"* ]]; then forTheWorthy="true"; fi
+          sunken="false"; if [[ "$options_string" == *"4"* ]]; then sunken="true"; fi
+          purity="false"; if [[ "$options_string" == *"5"* ]]; then purity="true"; fi
+
+          cat <<EOF > "Terra/terra-awg.ini"
           [world]
           name = ${{ github.event.inputs.name }}
           seed = ${{ github.event.inputs.seed }}
@@ -111,17 +117,17 @@ jobs:
           hardmodeLoot = $hardmodeLoot
           [extra]
           map = true
-          "@
-          Set-Content -Path "Terra/terra-awg.ini" -Value $iniContent
-          Get-Content -Path "Terra/terra-awg.ini"
+          EOF
+
+          cat "Terra/terra-awg.ini"
 
       - name: Run World Generator
         id: run_generator
         continue-on-error: true
-        shell: pwsh
+        shell: bash
         run: |
           cd Terra
-          ./terra-awg.exe
+          ./terra-awg
           cd ..
 
       - name: Upload Success Artifact
