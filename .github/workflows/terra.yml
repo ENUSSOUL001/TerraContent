@@ -123,15 +123,30 @@ jobs:
 
       - name: Run World Generator
         id: run_generator
-        continue-on-error: true
+        timeout-minutes: 30
         shell: bash
         run: |
-          cd Terra
-          ./terra-awg
-          cd ..
+          max_attempts=14
+          for ((attempt=1; attempt<=max_attempts; attempt++)); do
+            echo "Running world generator, attempt $attempt of $max_attempts..."
+            # Execute the command in a subshell to contain the 'cd'
+            (cd Terra && ./terra-awg)
+            exit_code=$?
+            if [ $exit_code -eq 0 ]; then
+              echo "World generator succeeded on attempt $attempt."
+              exit 0
+            fi
+            echo "Attempt $attempt failed with exit code $exit_code."
+            if [ $attempt -lt $max_attempts ]; then
+              echo "Waiting 20 seconds before next attempt..."
+              sleep 20
+            fi
+          done
+          echo "All $max_attempts attempts failed."
+          exit 1
 
       - name: Upload Success Artifact
-        if: steps.run_generator.outcome == 'success'
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: generated-world-files
@@ -141,12 +156,12 @@ jobs:
           if-no-files-found: error
 
       - name: Handle Generation Failure
-        if: steps.run_generator.outcome == 'failure'
+        if: failure()
         run: |
-          echo "The world generator failed. Check the 'Run World Generator' step logs for details." > "Cant do it.txt"
-      
+          echo "The world generator failed after 14 attempts. Check the 'Run World Generator' step logs for details." > "Cant do it.txt"
+
       - name: Upload Failure Artifact
-        if: steps.run_generator.outcome == 'failure'
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: generator-failed
