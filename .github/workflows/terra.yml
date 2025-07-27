@@ -128,15 +128,18 @@ jobs:
           max_attempts=14
           for ((attempt=1; attempt<=max_attempts; attempt++)); do
             echo "Running world generator, attempt $attempt of $max_attempts (30 minute timeout)..."
-            # Use the 'timeout' command to enforce a 30-minute limit for THIS attempt.
-            # We use 'bash -c' so we can run two commands ('cd' and the executable) under the timeout.
-            timeout 30m bash -c 'cd Terra && ./terra-awg'
-            exit_code=$?
-
-            if [ $exit_code -eq 0 ]; then
+            
+            # This 'if' structure catches the exit code from 'timeout'.
+            # If the command succeeds (exit code 0), the 'if' block runs.
+            # If it fails or times out (non-zero exit code), the script continues past the 'if'.
+            if timeout 30m bash -c 'cd Terra && ./terra-awg'; then
               echo "World generator succeeded on attempt $attempt."
-              exit 0
-            elif [ $exit_code -eq 124 ]; then
+              exit 0 # Success, so we exit the whole script with code 0.
+            fi
+            
+            # If we're here, the command failed. Let's find out why.
+            exit_code=$?
+            if [ $exit_code -eq 124 ]; then
               echo "Attempt $attempt failed: Timed out after 30 minutes."
             else
               echo "Attempt $attempt failed with a different error (exit code $exit_code)."
@@ -148,8 +151,8 @@ jobs:
             fi
           done
 
-          echo "All $max_attempts attempts failed."
-          exit 1
+          echo "All $max_attempts attempts have failed."
+          exit 1 # Explicitly fail the step after all retries are exhausted.
 
       - name: Upload Success Artifact
         if: success()
