@@ -7,10 +7,15 @@ on:
         required: true
         type: string
       overwrite_repository:
-        description: 'If true, delete all other files and replace the repo with the generated docs.'
+        description: 'If true, delete all other files and replace the repo with the generated docs. Ignored if "Just Extract" is enabled.'
         required: true
         type: boolean
-        default: true
+        default: false
+      just_extract:
+        description: 'If true, only extract the zip files to the repository root and skip documentation generation.'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build-and-document:
@@ -22,34 +27,61 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Utilities
-        run: sudo apt-get update && sudo apt-get install -y tree
-
-      - name: Process Zip Archives
         run: |
-          mkdir -p final_docs
-          
-          # Robustly parse the space-separated input string into an array.
-          # This method handles filenames containing spaces or special characters correctly,
-          # even if they were not explicitly quoted in the GitHub Action input.
-          # It leverages `printf %q` to shell-quote each detected filename,
-          # and then `readarray` to populate a Bash array from these safely quoted strings.
+          sudo apt-get update
+          sudo apt-get install -y tree unzip rsync grep
+
+      - name: Clean Repository (if overwrite_repository is true and not just_extracting)
+        if: ${{ github.event.inputs.overwrite_repository == 'true' && github.event.inputs.just_extract == 'false' }}
+        run: |
+          find . -mindepth 1 ! -path './.git*' ! -path './.github*' -exec rm -rf {} +
+
+      - name: Clean Repository for Extraction (if just_extract is true and overwrite_repository is true)
+        if: ${{ github.event.inputs.just_extract == 'true' && github.event.inputs.overwrite_repository == 'true' }}
+        run: |
+          find . -mindepth 1 ! -path './.git*' ! -path './.github*' -exec rm -rf {} +
+
+      - name: Just Extract Zip Archives
+        if: ${{ github.event.inputs.just_extract == 'true' }}
+        run: |
           declare -a zip_files_array=()
           while IFS= read -r -d $'\0' file; do
             zip_files_array+=("$file")
           done < <(printf '%s\0' "${{ github.event.inputs.zip_files }}" | xargs -0 -n 1 printf '%s\0')
           
-          # Iterate over the array of safely parsed zip file names
           for zip_file in "${zip_files_array[@]}"; do
-            if [ -z "$zip_file" ]; then # Skip any empty entries if they occur
+            if [ -z "$zip_file" ]; then continue; fi
+            if [ ! -f "$zip_file" ]; then
+              echo "⚠️ Warning: Skipping '$zip_file' because it was not found."
               continue
             fi
 
+            unzip -o "$zip_file" -d .
+            
+            basename_no_ext="$(basename "$zip_file" .zip)"
+            if [ -d "$basename_no_ext" ]; then
+              rsync -a "$basename_no_ext/" .
+              rm -rf "$basename_no_ext"
+            fi
+          done
+
+      - name: Process and Generate Documentation Files
+        if: ${{ github.event.inputs.just_extract == 'false' }}
+        run: |
+          mkdir -p final_docs
+          
+          declare -a zip_files_array=()
+          while IFS= read -r -d $'\0' file; do
+            zip_files_array+=("$file")
+          done < <(printf '%s\0' "${{ github.event.inputs.zip_files }}" | xargs -0 -n 1 printf '%s\0')
+          
+          for zip_file in "${zip_files_array[@]}"; do
+            if [ -z "$zip_file" ]; then continue; fi
             if [ ! -f "$zip_file" ]; then
               echo "⚠️ Warning: Skipping '$zip_file' because it was not found."
               continue
             fi
             
-            # Use parameter expansion to get the basename without the .zip extension
             basename="${zip_file%.zip}"
             temp_dir="temp_${basename}"
             output_file="final_docs/${basename}_documentation.md"
@@ -57,10 +89,6 @@ jobs:
             mkdir -p "$temp_dir"
             unzip -o "$zip_file" -d "$temp_dir"
             
-            # The rsync command assumes a specific internal structure of the zip file
-            # e.g., zip_file.zip contains a single top-level folder zip_file/
-            # and moves its contents up one level.
-            # Added a check to ensure the directory exists before attempting to rsync.
             if [ -d "${temp_dir}/${basename}" ]; then
               rsync -a "${temp_dir}/${basename}/" "$temp_dir/"
               rm -rf "${temp_dir}/${basename}"
@@ -77,17 +105,12 @@ jobs:
             echo "## 4. Source Files" >> "$output_file"
             current_dir=""
             
-            # The find command within the loop needs to handle paths correctly.
-            # Using null-terminated output for find and xargs -0 is the safest way.
-            # Changed the inner loop to be more robust.
             find "$temp_dir" -type f -not -path '*/.git/*' \
               -not -name "README.md" -not -name "Design.md" \
               -not -name ".agent.md" -not -name "plan.txt" -not -name "Progress.txt" \
               -print0 | sort -z | while IFS= read -r -d $'\0' file; do
                 if grep -qI . "$file"; then
-                  echo "✅ Combining: $file"
                   file_dir=$(dirname "$file")
-                  # Update current_dir and add folder heading if the directory changes
                   if [ "$file_dir" != "$current_dir" ]; then
                     current_dir="$file_dir"
                     echo "### Folder: \`$current_dir\`" >> "$output_file"
@@ -101,13 +124,11 @@ jobs:
             rm -rf "$temp_dir"
           done
 
-      - name: Finalize and Clean Repository
+      - name: Finalize Documentation (if not just_extract)
+        if: ${{ github.event.inputs.just_extract == 'false' }}
         run: |
           if [ -d "final_docs" ] && [ "$(ls -A final_docs)" ]; then
             mv final_docs/* .
-            if [ "${{ github.event.inputs.overwrite_repository }}" == "true" ]; then
-              find . -mindepth 1 ! -path './.git*' ! -path './.github*' ! -name '*_documentation.md' -exec rm -rf {} +
-            fi
           else
             echo "No documentation files were generated. Skipping finalization."
           fi
@@ -119,10 +140,12 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
           if [ -n "$(git status --porcelain)" ]; then
-            if [ "${{ github.event.inputs.overwrite_repository }}" == "true" ]; then
-              git commit -m "docs: Replace repository with new documentation"
+            if [ "${{ github.event.inputs.just_extract }}" == "true" ]; then
+              git commit -m "feat: Extracted zip files from workflow run"
+            elif [ "${{ github.event.inputs.overwrite_repository }}" == "true" ]; then
+              git commit -m "docs: Replaced repository with new documentation from workflow run"
             else
-              git commit -m "docs: Create/update project documentation"
+              git commit -m "docs: Created/updated project documentation from workflow run"
             fi
             git push
           else
