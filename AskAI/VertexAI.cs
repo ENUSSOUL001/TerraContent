@@ -32,7 +32,6 @@ namespace AskAI
             var httpContent = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
             var response = await HttpClient.PostAsync(apiUrl, httpContent);
-
             var responseJson = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
