@@ -17,15 +17,15 @@ namespace AskAI
         public override string Author => "You";
         public override string Description => "Lets players ask questions to a powerful AI in-game.";
         public override string Name => "AskAI";
-        public override Version Version => new Version(2, 0, 0, 0);
+        public override Version Version => new Version(2, 1, 0, 0);
 
         private static AskAIConfig _config;
         private Command _askAiCommand;
-        private static readonly Dictionary<string, DateTime> _lastUsage = new Dictionary<string, DateTime>();
-        private const int CooldownSeconds = 10;
         private static string _logFilePath;
         private const string AI_OPERATOR_USER = "AskAI_Operator";
         private const string AI_OPERATOR_GROUP = "ai_operator";
+        
+        private static bool _isAIBusy = false;
 
         public AskAI(Main game) : base(game) { }
 
@@ -43,11 +43,11 @@ namespace AskAI
                 HelpText = "Asks a question to the AI. Usage: /askai <prompt> [-flash|-detailed|-op]",
                 AllowServer = false
             };
-            Commands.ChatCommands.Add(_askAiCommand);
+            TShockAPI.Commands.ChatCommands.Add(_askAiCommand);
 
             if (_config.SetupAIOperatorAccount)
             {
-                SetupAIOperator();
+                ServerApi.Hooks.GamePostInitialize.Register(this, (args) => SetupAIOperator());
             }
         }
 
@@ -76,7 +76,7 @@ namespace AskAI
         {
             if (disposing)
             {
-                Commands.ChatCommands.Remove(_askAiCommand);
+                TShockAPI.Commands.ChatCommands.Remove(_askAiCommand);
             }
             base.Dispose(disposing);
         }
@@ -91,49 +91,43 @@ namespace AskAI
                 return;
             }
 
-            if (_lastUsage.TryGetValue(args.Player.Name, out var lastUseTime))
+            if (_isAIBusy)
             {
-                var elapsed = DateTime.UtcNow - lastUseTime;
-                if (elapsed.TotalSeconds < CooldownSeconds)
-                {
-                    int secondsLeft = CooldownSeconds - (int)elapsed.TotalSeconds;
-                    args.Player.SendErrorMessage($"Please wait {secondsLeft} more second(s) before using this command again.");
-                    return;
-                }
-            }
-            
-            var promptParameters = new List<string>(args.Parameters);
-            string mode = "standard";
-            string modelToUse = _config.DefaultModelId;
-            string systemPrompt = _config.SystemPrompt;
-
-            if (promptParameters.Count > 0)
-            {
-                string lastParam = promptParameters.Last().ToLower();
-                if (lastParam == "-flash" || lastParam == "-detailed" || lastParam == "-op" || lastParam == "-pro")
-                {
-                    mode = lastParam.Substring(1);
-                    promptParameters.RemoveAt(promptParameters.Count - 1);
-                }
-            }
-
-            if (promptParameters.Count == 0)
-            {
-                args.Player.SendErrorMessage("Please provide a prompt before the flag.");
+                args.Player.SendErrorMessage("The AI is currently processing another request. Please wait a moment.");
                 return;
             }
             
-            _lastUsage[args.Player.Name] = DateTime.UtcNow;
-
-            string userPrompt = string.Join(" ", promptParameters);
-
-            string waitingMessage = "Waiting for response...";
-            if (mode == "detailed") waitingMessage = "Waiting for detailed response... (takes time)";
-
-            TShock.Utils.Broadcast(waitingMessage, TextHelper.InfoColor);
-
+            _isAIBusy = true;
             try
             {
+                var promptParameters = new List<string>(args.Parameters);
+                string mode = "standard";
+                string modelToUse = _config.DefaultModelId;
+                string systemPrompt = _config.SystemPrompt;
+
+                if (promptParameters.Count > 0)
+                {
+                    string lastParam = promptParameters.Last().ToLower();
+                    if (lastParam == "-flash" || lastParam == "-detailed" || lastParam == "-op" || lastParam == "-pro")
+                    {
+                        mode = lastParam.Substring(1);
+                        promptParameters.RemoveAt(promptParameters.Count - 1);
+                    }
+                }
+
+                if (promptParameters.Count == 0)
+                {
+                    args.Player.SendErrorMessage("Please provide a prompt before the flag.");
+                    return;
+                }
+                
+                string userPrompt = string.Join(" ", promptParameters);
+
+                string waitingMessage = "Waiting for response...";
+                if (mode == "detailed") waitingMessage = "Waiting for detailed response... (takes time)";
+
+                TShock.Utils.Broadcast(waitingMessage, TextHelper.InfoColor);
+
                 string aiResponseText = "";
                 switch (mode)
                 {
@@ -148,7 +142,7 @@ namespace AskAI
                         systemPrompt = _config.SystemPromptOperator;
                         aiResponseText = await HandleOperatorRequest(userPrompt, args.Player);
                         break;
-                    default: // Also handles -pro
+                    default: 
                         aiResponseText = await HandleStandardRequest(userPrompt, args.Player.Name, modelToUse, systemPrompt);
                         break;
                 }
@@ -164,7 +158,11 @@ namespace AskAI
             {
                 string fullError = ex.ToString();
                 TShock.Utils.Broadcast("[AskAI] API Request Failed. Please see live.log for details.", TextHelper.ErrorColor);
-                LogToFile($"[FAILURE] User: {args.Player.Name} | Mode: {mode} | Model: {modelToUse} | Prompt: {userPrompt}\n[ERROR] {fullError}\n");
+                LogToFile($"[FAILURE] User: {args.Player.Name} | Prompt: {string.Join(" ", args.Parameters)}\n[ERROR] {fullError}\n");
+            }
+            finally
+            {
+                _isAIBusy = false;
             }
         }
         
@@ -230,7 +228,7 @@ namespace AskAI
             {
                 string command = functionCall.Args["command_string"].ToString();
                 var aiOperator = new TSRestPlayer(AI_OPERATOR_USER, TShock.Groups.GetGroupByName(AI_OPERATOR_GROUP));
-                TShock.Commands.HandleCommand(aiOperator, command);
+                TShockAPI.Commands.HandleCommand(aiOperator, command);
                 string commandOutput = string.Join("\n", aiOperator.GetCommandOutput());
                 return $"Command executed: `{command}`\nOutput: {commandOutput}";
             }
