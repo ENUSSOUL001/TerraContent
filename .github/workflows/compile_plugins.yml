@@ -1,48 +1,52 @@
-name: Compile TShock Plugins
+name: Compile and Commit Plugins
 
 on:
   workflow_dispatch:
     inputs:
       plugin_folders:
-        description: 'Space-separated paths to plugin root directories (e.g., "Replenisher-main/ EssentialsPlus-Anz-Changes/")'
+        description: 'Space-separated paths to plugin source directories.'
         required: true
         type: string
-        default: 'Replenisher-main/ EssentialsPlus-Anz-Changes/'
-      build_command:
-        description: 'The dotnet build command (e.g., "dotnet build --configuration Release")'
+        default: 'Replenisher-main/Replenisher/ EssentialsPlus-Anz-Changes/EssentialsPlus/'
+      output_directory:
+        description: 'Directory to place the final compiled plugins.'
         required: true
         type: string
-        default: 'dotnet build --configuration Release'
-      dotnet_version:
-        description: 'The .NET SDK version to use (e.g., "6.0.x")'
-        required: false
+        default: 'ServerPlugins'
+      commit_message:
+        description: 'The commit message for the compiled plugins.'
+        required: true
         type: string
-        default: '6.0.428'
+        default: 'build: Compile plugins from source'
 
 jobs:
-  compile_plugins:
+  compile-and-commit:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup .NET SDK
+      - name: Setup .NET 6.0 SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ github.event.inputs.dotnet_version }}
+          dotnet-version: '6.0.428'
 
-      - name: Parse Plugin Folders and Build
-        id: build_plugins_dynamic
+      - name: Clean Output Directory
         run: |
-          mkdir -p ./compiled_output
-          
+          echo "Cleaning up the output directory before build..."
+          rm -rf ${{ github.event.inputs.output_directory }}
+          mkdir -p ${{ github.event.inputs.output_directory }}
+
+      - name: Compile Plugins and Collect Output
+        run: |
+          # Robustly parse the space-separated input string into an array.
           readarray -d $'\0' folders < <(printf '%s\0' "${{ github.event.inputs.plugin_folders }}" | xargs -0 -n 1 printf '%s\0')
           
           for folder in "${folders[@]}"; do
-            if [ -z "$folder" ]; then
-              continue
-            fi
+            if [ -z "$folder" ]; then continue; fi
 
             echo "--- Processing folder: $folder ---"
             if [ ! -d "$folder" ]; then
@@ -50,31 +54,42 @@ jobs:
               continue
             fi
             
-            csproj_file=$(find "$folder" -maxdepth 2 -type f -name "*.csproj" -print -quit)
+            # Find the .csproj file within the specified folder
+            csproj_file=$(find "$folder" -maxdepth 1 -type f -name "*.csproj" -print -quit)
             
             if [ -z "$csproj_file" ]; then
-              echo "❌ Error: No .csproj file found in '$folder'. Skipping compilation for this folder."
+              echo "❌ Error: No .csproj file found directly in '$folder'. Skipping."
               continue
             fi
             
             echo "Building project: $csproj_file"
-            ${{ github.event.inputs.build_command }} "$csproj_file"
+            dotnet build "$csproj_file" --configuration Release
             
-            build_config=$(echo "${{ github.event.inputs.build_command }}" | grep -oP '--configuration \K\S+' || echo "Release")
-            # This assumes a net6.0 target framework as per the plugin files.
-            output_dir_path=$(dirname "$csproj_file")/bin/$build_config/net6.0
+            # This is the corrected path that respects the <OutputPath> in the .csproj files
+            output_source_path="$(dirname "$csproj_file")/bin/Release/ServerPlugins"
             
-            if [ -d "$output_dir_path" ]; then
-              echo "Collecting DLLs from: $output_dir_path"
-              cp "$output_dir_path"/*.dll ./compiled_output/
+            if [ -d "$output_source_path" ]; then
+              echo "Collecting DLLs from: $output_source_path"
+          
+              cp "$output_source_path"/* "${{ github.event.inputs.output_directory }}/"
             else
-              echo "⚠️ Warning: Compiled output directory '$output_dir_path' not found. No DLLs collected for '$folder'."
+              echo "⚠️ Warning: Compiled output directory '$output_source_path' not found. No DLLs collected for '$folder'."
             fi
           done
 
-      - name: Upload Compiled Plugins as Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Compiled-TShock-Plugins
-          path: ./compiled_output/
-          retention-days: 7
+      - name: Commit and Push Compiled Files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Add the entire output directory
+          git add ${{ github.event.inputs.output_directory }}
+          
+          # Check if there are any changes to commit
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Changes detected. Committing and pushing..."
+            git commit -m "${{ github.event.inputs.commit_message }}"
+            git push
+          else
+            echo "No changes detected, nothing to commit."
+          fi
