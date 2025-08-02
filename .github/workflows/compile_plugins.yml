@@ -1,0 +1,86 @@
+name: Compile TShock Plugins
+
+on:
+  workflow_dispatch:
+    inputs:
+      plugin_folders:
+        description: 'Space-separated paths to plugin root directories (e.g., "Replenisher-main/ EssentialsPlus-Anz-Changes/")'
+        required: true
+        type: string
+        default: 'Replenisher-main/ EssentialsPlus-Anz-Changes/'
+      build_command:
+        description: 'The dotnet build command (e.g., "dotnet build --configuration Release")'
+        required: true
+        type: string
+        default: 'dotnet build --configuration Release'
+      dotnet_version:
+        description: 'The .NET SDK version to use (e.g., "6.0.x", "8.0.x")'
+        required: false
+        type: string
+        default: '6.0.x'
+
+jobs:
+  compile_plugins:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: ${{ github.event.inputs.dotnet_version }}
+
+      - name: Parse Plugin Folders and Build
+        id: build_plugins_dynamic
+        run: |
+          mkdir -p ./compiled_output
+          
+          # Use printf %q to safely quote paths with spaces or special characters
+          # Then xargs -0 -n 1 printf '%s\0' splits them into individual null-terminated strings
+          # readarray -d $'\0' populates the Bash array 'folders'
+          readarray -d $'\0' folders < <(printf '%s\0' "${{ github.event.inputs.plugin_folders }}" | xargs -0 -n 1 printf '%s\0')
+          
+          for folder in "${folders[@]}"; do
+            if [ -z "$folder" ]; then # Skip empty entries
+              continue
+            fi
+
+            echo "--- Processing folder: $folder ---"
+            if [ ! -d "$folder" ]; then
+              echo "⚠️ Warning: Folder '$folder' not found. Skipping."
+              continue
+            fi
+            
+            # Find the .csproj file within the folder (looks one level deep for common project structures)
+            # -maxdepth 2 ensures we don't go too deep if the folder contains many subfolders
+            csproj_file=$(find "$folder" -maxdepth 2 -type f -name "*.csproj" -print -quit)
+            
+            if [ -z "$csproj_file" ]; then
+              echo "❌ Error: No .csproj file found in '$folder'. Skipping compilation for this folder."
+              continue
+            fi
+            
+            echo "Building project: $csproj_file"
+            # Execute the user-provided build command
+            ${{ github.event.inputs.build_command }} "$csproj_file"
+            
+            # Determine the output directory based on the build command (assuming default output structure)
+            # This is a heuristic and might need adjustment if your build command customizes output path
+            build_config=$(echo "${{ github.event.inputs.build_command }}" | grep -oP '--configuration \K\S+' || echo "Release")
+            output_dir="$folder/bin/$build_config/net6.0" # Assuming net6.0, adjust if you change TargetFramework
+            
+            if [ -d "$output_dir" ]; then
+              echo "Collecting DLLs from: $output_dir"
+              cp "$output_dir"/*.dll ./compiled_output/
+            else
+              echo "⚠️ Warning: Compiled output directory '$output_dir' not found. No DLLs collected for '$folder'."
+            fi
+          done
+
+      - name: Upload Compiled Plugins as Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: Compiled-TShock-Plugins
+          path: ./compiled_output/
+          retention-days: 7
