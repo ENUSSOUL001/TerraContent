@@ -59,15 +59,26 @@ jobs:
             fi
             
             echo "Building project: $csproj_file"
-            dotnet build "$csproj_file" --configuration Release
+            # Added -p:PlatformTarget=x64 to resolve architecture mismatch warnings (MSB3270)
+            dotnet build "$csproj_file" --configuration Release -p:PlatformTarget=x64
             
+            # This is the corrected path detection logic
+            build_config="Release"
+            target_framework="net6.0" # Based on the project files
+            # First, check for the custom <OutputPath>
+            output_source_path="$(dirname "$csproj_file")/bin/$build_config/ServerPlugins"
+            # If that doesn't exist, fall back to the default path
+            if [ ! -d "$output_source_path" ]; then
+              output_source_path="$(dirname "$csproj_file")/bin/$build_config/$target_framework"
+            fi
             
             if [ -d "$output_source_path" ]; then
               echo "Collecting files from: $output_source_path"
-              
+              # Copy all files from the plugin's output to our final directory
               cp -r "$output_source_path"/* "${{ github.event.inputs.output_directory }}/"
             else
-              echo "⚠️ Warning: Compiled output directory '$output_source_path' not found for '$folder'."
+              echo "❌ Error: Could not find compiled output in standard paths for '$folder'."
+              exit 1
             fi
           done
 
