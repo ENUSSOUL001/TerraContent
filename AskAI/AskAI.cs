@@ -18,7 +18,7 @@ namespace AskAI
         public override string Author => "You";
         public override string Description => "Lets players ask questions to a powerful AI in-game.";
         public override string Name => "AskAI";
-        public override Version Version => new Version(2, 4, 0, 0);
+        public override Version Version => new Version(2, 5, 0, 0);
 
         private static AskAIConfig _config;
         private Command _askAiCommand;
@@ -180,14 +180,18 @@ namespace AskAI
             string dispatcherModel = "gemini-2.5-flash";
             string synthesizerModel = "gemini-2.5-pro";
 
-            var dispatcherTools = new List<Tool> { new Tool { FunctionDeclarations = new List<FunctionDeclaration>
+            var dispatcherTools = new List<Tool>
             {
-                new FunctionDeclaration
+                new Tool { FunctionDeclarations = new List<FunctionDeclaration>
                 {
-                    Name = "get_recipe", Description = "Finds the crafting recipe for a given Terraria item name.",
-                    Parameters = new ParametersInfo { Properties = new Dictionary<string, PropertyInfo> { { "itemName", new PropertyInfo { Type = "STRING", Description = "The name of the Terraria item." } } } }
-                }
-            }, GoogleSearch = new object() } };
+                    new FunctionDeclaration
+                    {
+                        Name = "get_recipe", Description = "Finds the crafting recipe for a given Terraria item name.",
+                        Parameters = new ParametersInfo { Properties = new Dictionary<string, PropertyInfo> { { "itemName", new PropertyInfo { Type = "STRING", Description = "The name of the Terraria item." } } } }
+                    }
+                }},
+                new Tool { GoogleSearch = new object() }
+            };
 
             var dispatcherResponse = await VertexAI.AskAsync($"From {playerName}: {userPrompt}", _config, dispatcherModel, "You are a dispatcher. Your only job is to determine the best tool to answer the user's query.", dispatcherTools);
             var functionCall = dispatcherResponse?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.FunctionCall;
@@ -219,7 +223,8 @@ namespace AskAI
                         Name = "tshock_command", Description = "Executes a TShock server command.",
                         Parameters = new ParametersInfo { Properties = new Dictionary<string, PropertyInfo> { { "command_string", new PropertyInfo { Type = "STRING", Description = "The full command string to execute, starting with a '/'." } } } }
                     }
-                }, GoogleSearch = new object() }
+                }},
+                new Tool { GoogleSearch = new object() }
             };
 
             var response = await VertexAI.AskAsync($"From {player.Name}: {userPrompt}", _config, "gemini-2.5-pro", _config.SystemPromptOperator, opTools);
