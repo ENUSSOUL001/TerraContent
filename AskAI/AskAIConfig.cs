@@ -1,318 +1,40 @@
-using System;
-using System.Collections.Generic;
+using Newtonsoft.Json;
 using System.IO;
-using System.Linq;
-using System.Text.RegularExpressions;
-using System.Threading.Tasks;
-using Terraria;
-using TerrariaApi.Server;
-using TShockAPI;
-using TShockAPI.DB;
-using Microsoft.Xna.Framework;
 
 namespace AskAI
 {
-    [ApiVersion(2, 1)]
-    public class AskAI : TerrariaPlugin
+    public class AskAIConfig
     {
-        public override string Author => "You";
-        public override string Description => "Lets players ask questions to a powerful AI in-game.";
-        public override string Name => "AskAI";
-        public override Version Version => new Version(2, 3, 0, 0);
+        [JsonProperty("ApiKey", Order = 1)]
+        public string ApiKey { get; set; } = "YOUR_API_KEY_HERE";
 
-        private static AskAIConfig _config;
-        private Command _askAiCommand;
-        private static string _logFilePath;
-        private const string AI_OPERATOR_USER = "AskAI_Operator";
-        private const string AI_OPERATOR_GROUP = "ai_operator";
+        [JsonProperty("DefaultModelId", Order = 2)]
+        public string DefaultModelId { get; set; } = "gemini-2.5-pro";
         
-        private static bool _isAIBusy = false;
-        private static HashSet<string> _allowedEmojis = new HashSet<string>();
-        private static string _emojiListForPrompt = "none";
+        [JsonProperty("ApiUrl", Order = 3)]
+        public string ApiUrl { get; set; } = "https://aiplatform.googleapis.com/v1/publishers/google/models/";
 
-        public AskAI(Main game) : base(game) { }
+        [JsonProperty("SetupAIOperatorAccount", Order = 4)]
+        public bool SetupAIOperatorAccount { get; set; } = true;
 
-        public override void Initialize()
-        {
-            string configDirectory = Path.Combine(TShock.SavePath, "AskAI");
-            Directory.CreateDirectory(configDirectory);
-            _logFilePath = Path.Combine(configDirectory, "live.log");
+        [JsonProperty("SystemPrompt", Order = 5)]
+        public string SystemPrompt { get; set; } = "You are a helpful AI assistant in the game Terraria. Your purpose is to provide concise, accurate answers based on real-time search results.\n\nState & Action Awareness:\nYou have no memory of past questions; each request is a new conversation. Hello! While I can't hold a conversation, feel free to ask me more questions anytime using `/askai`. You can also grant me operator powers to perform in-game actions by adding the `-op` flag to your command (e.g., `/askai give me a torch -op`).\n\nSearch Rules:\n- For Terraria Queries: Your search results MUST come from terraria.wiki.gg or reddit.com. You are STRICTLY FORBIDDEN from using any information from Fandom wikis.\n- For Non-Terraria Queries: Use the `google_search` tool to find the most relevant and authoritative general sources.\n\nFormatting Rules:\n- Your output MUST be plain text only. All Markdown is strictly forbidden.\n- The ONLY allowed formatting is the Terraria-style color tag: [c/RRGGBB:Your Text Here]. Use it for emphasis. IMPORTANT: A single color tag cannot contain newlines. Each colored section must be on a single line. Example: \"The [c/FFD700:Zenith] is very powerful.\" is correct.\n- You can use emojis. To use an emoji, wrap its name in double colons. For example: ::heart::. The list of available emoji words is: [EMOJI_LIST_HERE].\n\nResponse Rules:\n- Be direct and concise. Your response must NOT exceed 13 sentences.";
 
-            string configPath = Path.Combine(configDirectory, "config.json");
-            _config = AskAIConfig.Read(configPath);
+        [JsonProperty("SystemPromptDetailed", Order = 6)]
+        public string SystemPromptDetailed { get; set; } = "You are a knowledgeable and friendly Terraria guide. Your task is to synthesize the provided context into a comprehensive and engaging answer for the user.\n\nGreeting & State Awareness:\nAlways greet the player first (e.g., \"Hello, Terrarian!\"). Since you have no memory of past questions, conclude your answer by reminding the user they can ask another question with `/askai`.\n\nFormatting:\n- Structure your answer into up to 4 clear, concise paragraphs. This may exceed 13 sentences, which is acceptable for detailed answers.\n- Use Terraria color tags like [c/FFFF00:Your Text Here] creatively to highlight key terms. Remember, color tags cannot span multiple lines.\n- Use emojis like ::skull:: to add personality. The list of available emoji words is: [EMOJI_LIST_HERE].\n\nContent Rules:\n- Base your answer primarily on the detailed context provided to you.\n- You may use the search tool to supplement the context if necessary.\n- Maintain a friendly and helpful tone.";
 
-            LoadEmojis(Path.Combine(configDirectory, "emojis.txt"));
-            
-            _askAiCommand = new Command("", AskAICommand, "askai")
-            {
-                HelpText = "Asks a question to the AI. Usage: /askai <prompt> [-flash|-detailed|-op]",
-                AllowServer = false
-            };
-            TShockAPI.Commands.ChatCommands.Add(_askAiCommand);
+        [JsonProperty("SystemPromptOperator", Order = 7)]
+        public string SystemPromptOperator { get; set; } = "You are an Operator AI assistant for a Terraria server running TShock. Your primary function is to help players by executing server commands on their behalf. You are precise, helpful, and you always prioritize safety and game balance. Hello there! While I can't hold a conversation, I can help you with in-game actions. Just ask me again with `/askai -op`.\n\nYour Core Workflow:\n1. Analyze the user's natural language request. Understand that you are acting on behalf of the player who sent the command (e.g., 'enussoul', 'rinkir').\n2. Determine the most appropriate TShock command from your Command Reference Guide to fulfill the request.\n3. **Information Gathering:** If you need specific information to construct a command (like an item ID, NPC name, or boss name), you MUST use the `google_search` tool first. An excellent way to do this is to generate a `/find` command (e.g., `tshock_command(command_string: \"/find -i Zenith\")`) and use its output.\n4. Construct the exact command string. For commands that affect the player directly or require a player context, you MUST prepend the command with `/sudo <playername>` (e.g., `/sudo enussoul /give 100 999`). For commands that act globally (like `/worldevent`), you do not need `/sudo`.\n5. Call the `tshock_command` function with the fully constructed command string. You operate with full permissions and execute commands directly, overriding player permissions where necessary for the requesting user's benefit.\n6. If the request cannot be mapped to a command, is ambiguous, or violates a safety rule, respond with a clarifying question instead of executing a command.\n\nSafety & Balance Rules:\n- You are STRICTLY FORBIDDEN from executing commands that manage the server, users, or permissions. This includes commands like `/serverpassword`, `/version`, `/checkupdates`, `/off`, `/off-nosave`, `/reload`, `/rest`, `/user`, `/login`, `/logout`, `/password`, `/register`, `/accountinfo`, `/ban`, `/kick`, `/kickall`, `/mute`, `/overridessc`, `/savessc`, `/uploadssc`, `/tempgroup`, `/su`, `/sudo` (when used to elevate yourself or others), or `/hardmode`.\n- **Rule of Reasonableness:** When a user requests items or entities without specifying an amount (e.g., \"give me torches\"), you MUST default to a fair, low quantity (e.g., 20 torches, 1 boss). You are only to provide large amounts if the user explicitly asks for them.\n\nFunction Calling Tools:\n- `tshock_command(command_string)`: Executes a TShock command. The `command_string` must be a complete command including `/` and any necessary arguments.\n- `google_search(search_query)`: Searches the web for information.\n\nFormatting Rules:\n- If you are not executing a command and are responding with text, your output MUST be plain text only. All Markdown is strictly forbidden.\n- The ONLY allowed formatting is the Terraria-style color tag: [c/RRGGBB:Your Text Here]. Use it for emphasis. IMPORTANT: A single color tag cannot contain newlines. Each colored section must be on a single line. Example: \"The [c/FFD700:Zenith] is very powerful.\" is correct.\n- You can use emojis. To use an emoji, wrap its name in double colons. For example: ::heart::. The list of available emoji words is: [EMOJI_LIST_HERE].\n\n---\n### **Command Reference Guide**\n\n#### **Information & Utility**\n| Command(s) | Description & Syntax | Example User Request -> AI Function Call |\n|---|---|---|\n| `/find -i <name>` | Find the ID of any item. Syntax: `/find -i <item name>`. Example: \"What's the ID for a torch?\" -> `tshock_command(command_string: \"/find -i torch\")` |\n| `/find -n <name>` | Find the ID of any NPC or Boss. Syntax: `/find -n <NPC name>`. Example: \"What's the ID for King Slime?\" -> `tshock_command(command_string: \"/find -n \\\"King Slime\\\"\")` |\n| `/pos` | Displays your current tile coordinates (X, Y). Syntax: `/pos`. Example: \"Where am I?\" -> `tshock_command(command_string: \"/pos\")` |\n| `/time <setting>` | Changes or displays world time. Settings: `day`, `night`, `noon`, `midnight`, `hh:mm`. If no setting, displays current time. Syntax: `/time <setting>`. Example: \"Make it midnight.\" -> `tshock_command(command_string: \"/time midnight\")` |";
 
-            if (_config.SetupAIOperatorAccount)
-            {
-                ServerApi.Hooks.GamePostInitialize.Register(this, (args) => SetupAIOperator());
-            }
-        }
-
-        private void LoadEmojis(string path)
+        public static AskAIConfig Read(string path)
         {
             if (!File.Exists(path))
             {
-                File.WriteAllText(path, "heart/skull/zenith");
-                TShock.Log.Info("[AskAI] Created default emojis.txt file.");
+                var newConfig = new AskAIConfig();
+                File.WriteAllText(path, JsonConvert.SerializeObject(newConfig, Formatting.Indented));
+                return newConfig;
             }
-
-            try
-            {
-                string content = File.ReadAllText(path);
-                var emojiArray = content.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
-                _allowedEmojis = new HashSet<string>(emojiArray.Select(e => e.Replace(" ", "").ToLowerInvariant()), StringComparer.OrdinalIgnoreCase);
-                _emojiListForPrompt = string.Join(", ", emojiArray.Take(50)) + (emojiArray.Length > 50 ? ", ..." : "");
-                TShock.Log.Info($"[AskAI] Loaded {_allowedEmojis.Count} emojis.");
-            }
-            catch (Exception ex)
-            {
-                TShock.Log.Error($"[AskAI] Failed to load emojis.txt: {ex.Message}");
-            }
-        }
-
-        private void SetupAIOperator()
-        {
-            var group = TShock.Groups.GetGroupByName(AI_OPERATOR_GROUP);
-            if (group == null)
-            {
-                TShock.Groups.AddGroup(AI_OPERATOR_GROUP, null, "", "173,216,230");
-                group = TShock.Groups.GetGroupByName(AI_OPERATOR_GROUP);
-                TShock.Log.Info("[AskAI] Created dedicated AI operator group.");
-            }
-            
-            var aiUser = TShock.UserAccounts.GetUserAccountByName(AI_OPERATOR_USER);
-            if (aiUser == null)
-            {
-                var password = Guid.NewGuid().ToString();
-                aiUser = new UserAccount { Name = AI_OPERATOR_USER, Group = AI_OPERATOR_GROUP };
-                TShock.UserAccounts.AddUserAccount(aiUser);
-                TShock.UserAccounts.SetUserAccountPassword(aiUser, password);
-                TShock.Log.Info("[AskAI] Created dedicated AI operator user account.");
-            }
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                TShockAPI.Commands.ChatCommands.Remove(_askAiCommand);
-            }
-            base.Dispose(disposing);
-        }
-
-        private async void AskAICommand(CommandArgs args)
-        {
-            if (args.Parameters.Count == 0)
-            {
-                string usage = TextHelper.Colorize("/askai", TextHelper.UsageColor);
-                string param = TextHelper.Colorize("<prompt> [-flash|-detailed|-op]", TextHelper.UsageParamColor);
-                args.Player.SendErrorMessage($"Usage: {usage} {param}");
-                return;
-            }
-
-            if (_isAIBusy)
-            {
-                args.Player.SendErrorMessage("The AI is currently processing another request. Please wait a moment.");
-                return;
-            }
-            
-            _isAIBusy = true;
-            try
-            {
-                var promptParameters = new List<string>(args.Parameters);
-                string mode = "standard";
-                string modelToUse = _config.DefaultModelId;
-                string systemPrompt = _config.SystemPrompt;
-
-                if (promptParameters.Count > 0)
-                {
-                    string lastParam = promptParameters.Last().ToLower();
-                    if (lastParam == "-flash" || lastParam == "-detailed" || lastParam == "-op" || lastParam == "-pro")
-                    {
-                        mode = lastParam.Substring(1);
-                        promptParameters.RemoveAt(promptParameters.Count - 1);
-                    }
-                }
-
-                if (promptParameters.Count == 0)
-                {
-                    args.Player.SendErrorMessage("Please provide a prompt before the flag.");
-                    return;
-                }
-                
-                string userPrompt = string.Join(" ", promptParameters);
-
-                string waitingMessage = "Waiting for response...";
-                if (mode == "detailed") waitingMessage = "Waiting for detailed response... (takes time)";
-
-                TShock.Utils.Broadcast(waitingMessage, TextHelper.InfoColor);
-
-                string aiResponseText = "";
-                switch (mode)
-                {
-                    case "flash":
-                        modelToUse = "gemini-2.5-flash";
-                        systemPrompt = _config.SystemPrompt.Replace("[EMOJI_LIST_HERE]", _emojiListForPrompt);
-                        aiResponseText = await HandleStandardRequest(userPrompt, args.Player.Name, modelToUse, systemPrompt);
-                        break;
-                    case "detailed":
-                        aiResponseText = await HandleDetailedRequest(userPrompt, args.Player.Name);
-                        break;
-                    case "op":
-                        systemPrompt = _config.SystemPromptOperator.Replace("[EMOJI_LIST_HERE]", _emojiListForPrompt);
-                        aiResponseText = await HandleOperatorRequest(userPrompt, args.Player);
-                        break;
-                    default: 
-                        systemPrompt = _config.SystemPrompt.Replace("[EMOJI_LIST_HERE]", _emojiListForPrompt);
-                        aiResponseText = await HandleStandardRequest(userPrompt, args.Player.Name, modelToUse, systemPrompt);
-                        break;
-                }
-                
-                string header = $"\"{userPrompt}\" Asked by {args.Player.Name}:";
-                TShock.Utils.Broadcast(header, TextHelper.AINameColor);
-
-                BroadcastResponse(aiResponseText);
-
-                LogToFile($"[SUCCESS] User: {args.Player.Name} | Mode: {mode} | Model: {modelToUse} | Prompt: {userPrompt}\n[RESPONSE] {aiResponseText}\n");
-            }
-            catch (Exception ex)
-            {
-                string fullError = ex.ToString();
-                TShock.Utils.Broadcast("[AskAI] API Request Failed. Please see live.log for details.", TextHelper.ErrorColor);
-                LogToFile($"[FAILURE] User: {args.Player.Name} | Prompt: {string.Join(" ", args.Parameters)}\n[ERROR] {fullError}\n");
-            }
-            finally
-            {
-                _isAIBusy = false;
-            }
-        }
-        
-        private async Task<string> HandleStandardRequest(string userPrompt, string playerName, string modelId, string systemPrompt)
-        {
-            string finalPrompt = $"Asked from {playerName}: {userPrompt}";
-            var tools = new List<Tool> { new Tool { GoogleSearch = new object() } };
-            var response = await VertexAI.AskAsync(finalPrompt, _config, modelId, systemPrompt, tools);
-            return response?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? "The AI returned an empty response.";
-        }
-        
-        private async Task<string> HandleDetailedRequest(string userPrompt, string playerName)
-        {
-            string dispatcherModel = "gemini-2.5-flash";
-            string synthesizerModel = "gemini-2.5-pro";
-
-            var dispatcherTools = new List<Tool> { new Tool { FunctionDeclarations = new List<FunctionDeclaration>
-            {
-                new FunctionDeclaration
-                {
-                    Name = "get_recipe", Description = "Finds the crafting recipe for a given Terraria item name.",
-                    Parameters = new ParametersInfo { Properties = new Dictionary<string, PropertyInfo> { { "itemName", new PropertyInfo { Type = "STRING", Description = "The name of the Terraria item." } } } }
-                }
-            }, GoogleSearch = new object() } };
-
-            var dispatcherResponse = await VertexAI.AskAsync($"From {playerName}: {userPrompt}", _config, dispatcherModel, "You are a dispatcher. Your only job is to determine the best tool to answer the user's query.", dispatcherTools);
-            var functionCall = dispatcherResponse?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.FunctionCall;
-
-            string context = "";
-            if (functionCall?.Name == "get_recipe")
-            {
-                context = PluginTools.GetRecipe(functionCall.Args["itemName"].ToString());
-            }
-            else
-            {
-                var searchResponse = await HandleStandardRequest(userPrompt, playerName, dispatcherModel, _config.SystemPrompt);
-                context = "Search Result: " + searchResponse;
-            }
-
-            string synthesizerPrompt = $"Please answer the user's original question based on the following information.\n\nContext:\n{context}\n\nOriginal Question: {userPrompt}";
-            var synthesizerSystemPrompt = _config.SystemPromptDetailed.Replace("[EMOJI_LIST_HERE]", _emojiListForPrompt);
-            var synthesizerResponse = await VertexAI.AskAsync(synthesizerPrompt, _config, synthesizerModel, synthesizerSystemPrompt, null);
-            return synthesizerResponse?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? "The AI failed to synthesize a detailed response.";
-        }
-        
-        private async Task<string> HandleOperatorRequest(string userPrompt, TSPlayer player)
-        {
-            var opTools = new List<Tool>
-            {
-                new Tool { FunctionDeclarations = new List<FunctionDeclaration>
-                {
-                    new FunctionDeclaration
-                    {
-                        Name = "tshock_command", Description = "Executes a TShock server command.",
-                        Parameters = new ParametersInfo { Properties = new Dictionary<string, PropertyInfo> { { "command_string", new PropertyInfo { Type = "STRING", Description = "The full command string to execute, starting with a '/'." } } } }
-                    }
-                }, GoogleSearch = new object() }
-            };
-
-            string finalSystemPrompt = _config.SystemPromptOperator.Replace("[EMOJI_LIST_HERE]", _emojiListForPrompt);
-            var response = await VertexAI.AskAsync($"From {player.Name}: {userPrompt}", _config, "gemini-2.5-pro", finalSystemPrompt, opTools);
-            var functionCall = response?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.FunctionCall;
-
-            if (functionCall?.Name == "tshock_command")
-            {
-                string command = functionCall.Args["command_string"].ToString();
-                var aiOperator = new TSRestPlayer(AI_OPERATOR_USER, TShock.Groups.GetGroupByName(AI_OPERATOR_GROUP));
-                TShockAPI.Commands.HandleCommand(aiOperator, command);
-                string commandOutput = string.Join("\n", aiOperator.GetCommandOutput());
-                return $"Command executed: `{command}`\nOutput: {commandOutput}";
-            }
-            
-            return response?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? "The AI chose not to execute a command.";
-        }
-
-        private void BroadcastResponse(string responseText)
-        {
-            var processedText = ProcessEmojis(responseText);
-            var sanitizedText = processedText.Replace("\r", "");
-            string[] lines = sanitizedText.Split('\n');
-            
-            foreach (string line in lines)
-            {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-                string fixedLine = FixBrokenColorTags(line);
-                TShock.Utils.Broadcast(fixedLine, Color.White);
-            }
-        }
-        
-        private string ProcessEmojis(string text)
-        {
-            return Regex.Replace(text, @"::([\w\s]+)::", match =>
-            {
-                string emojiName = match.Groups[1].Value.Replace(" ", "").ToLowerInvariant();
-                if (_allowedEmojis.Contains(emojiName))
-                {
-                    return $":{match.Groups[1].Value.Replace(" ", "").ToLowerInvariant()}:";
-                }
-                return match.Value;
-            });
-        }
-
-        private string FixBrokenColorTags(string line)
-        {
-            if (line.Contains("[c/") && !line.EndsWith("]"))
-            {
-                return line + "]";
-            }
-            return line;
-        }
-
-        private static void LogToFile(string message)
-        {
-            try
-            {
-                File.AppendAllText(_logFilePath, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}");
-            }
-            catch (Exception ex)
-            {
-                TShock.Log.Error($"[AskAI] Failed to write to live.log: {ex.Message}");
-            }
+            return JsonConvert.DeserializeObject<AskAIConfig>(File.ReadAllText(path));
         }
     }
 }
