@@ -34,18 +34,15 @@ jobs:
         with:
           dotnet-version: '6.0.428'
 
-      - name: Clean Output Directory
+      - name: Clean and Prepare Output Directory
         run: |
-          echo "Cleaning up the output directory before build..."
+          echo "Cleaning and preparing the output directory: ${{ github.event.inputs.output_directory }}"
           rm -rf ${{ github.event.inputs.output_directory }}
           mkdir -p ${{ github.event.inputs.output_directory }}
 
       - name: Compile Plugins and Collect Output
         run: |
-          # Robustly parse the space-separated input string into an array.
-          readarray -d $'\0' folders < <(printf '%s\0' "${{ github.event.inputs.plugin_folders }}" | xargs -0 -n 1 printf '%s\0')
-          
-          for folder in "${folders[@]}"; do
+          for folder in ${{ github.event.inputs.plugin_folders }}; do
             if [ -z "$folder" ]; then continue; fi
 
             echo "--- Processing folder: $folder ---"
@@ -54,7 +51,6 @@ jobs:
               continue
             fi
             
-            # Find the .csproj file within the specified folder
             csproj_file=$(find "$folder" -maxdepth 1 -type f -name "*.csproj" -print -quit)
             
             if [ -z "$csproj_file" ]; then
@@ -65,15 +61,13 @@ jobs:
             echo "Building project: $csproj_file"
             dotnet build "$csproj_file" --configuration Release
             
-            # This is the corrected path that respects the <OutputPath> in the .csproj files
-            output_source_path="$(dirname "$csproj_file")/bin/Release/ServerPlugins"
             
             if [ -d "$output_source_path" ]; then
-              echo "Collecting DLLs from: $output_source_path"
-          
-              cp "$output_source_path"/* "${{ github.event.inputs.output_directory }}/"
+              echo "Collecting files from: $output_source_path"
+              
+              cp -r "$output_source_path"/* "${{ github.event.inputs.output_directory }}/"
             else
-              echo "⚠️ Warning: Compiled output directory '$output_source_path' not found. No DLLs collected for '$folder'."
+              echo "⚠️ Warning: Compiled output directory '$output_source_path' not found for '$folder'."
             fi
           done
 
@@ -82,10 +76,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Add the entire output directory
           git add ${{ github.event.inputs.output_directory }}
           
-          # Check if there are any changes to commit
           if [ -n "$(git status --porcelain)" ]; then
             echo "Changes detected. Committing and pushing..."
             git commit -m "${{ github.event.inputs.commit_message }}"
