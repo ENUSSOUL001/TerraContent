@@ -1,40 +1,318 @@
-using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using Terraria;
+using TerrariaApi.Server;
+using TShockAPI;
+using TShockAPI.DB;
+using Microsoft.Xna.Framework;
 
 namespace AskAI
 {
-    public class AskAIConfig
+    [ApiVersion(2, 1)]
+    public class AskAI : TerrariaPlugin
     {
-        [JsonProperty("ApiKey", Order = 1)]
-        public string ApiKey { get; set; } = "AQ.Ab8RN6IN2NqAzK7J6QX2sEBsZnT6kMHq_QMbZOdzJh5Bmx5ZMQ";
+        public override string Author => "You";
+        public override string Description => "Lets players ask questions to a powerful AI in-game.";
+        public override string Name => "AskAI";
+        public override Version Version => new Version(2, 3, 0, 0);
 
-        [JsonProperty("DefaultModelId", Order = 2)]
-        public string DefaultModelId { get; set; } = "gemini-2.5-pro";
+        private static AskAIConfig _config;
+        private Command _askAiCommand;
+        private static string _logFilePath;
+        private const string AI_OPERATOR_USER = "AskAI_Operator";
+        private const string AI_OPERATOR_GROUP = "ai_operator";
         
-        [JsonProperty("ApiUrl", Order = 3)]
-        public string ApiUrl { get; set; } = "https://aiplatform.googleapis.com/v1/publishers/google/models/";
+        private static bool _isAIBusy = false;
+        private static HashSet<string> _allowedEmojis = new HashSet<string>();
+        private static string _emojiListForPrompt = "none";
 
-        [JsonProperty("SetupAIOperatorAccount", Order = 4)]
-        public bool SetupAIOperatorAccount { get; set; } = true;
+        public AskAI(Main game) : base(game) { }
 
-        [JsonProperty("SystemPrompt", Order = 5)]
-        public string SystemPrompt { get; set; } = "You are a helpful AI assistant in the game Terraria. Your purpose is to provide concise, accurate answers based on real-time search results.\n\nState & Action Awareness:\nYou have no memory of past questions; each request is a new conversation. Hello! While I can't hold a conversation, feel free to ask me more questions anytime using `/askai`. You can also grant me operator powers to perform in-game actions by adding the `-op` flag to your command (e.g., `/askai give me a torch -op`).\n\nSearch Rules:\n- For Terraria Queries: Your search results MUST come from terraria.wiki.gg or reddit.com. You are STRICTLY FORBIDDEN from using any information from Fandom wikis.\n- For Non-Terraria Queries: Use the `google_search` tool to find the most relevant and authoritative general sources.\n\nFormatting Rules:\n- Your output MUST be plain text only. All Markdown is strictly forbidden.\n- The ONLY allowed formatting is the Terraria-style color tag: [c/RRGGBB:Your Text Here]. Use it for emphasis and to make your messages more colorful and engaging. IMPORTANT: A single color tag cannot contain newlines. Each colored section must be on a single line. Example: \"The [c/FFD700:Zenith] is very powerful.\" is correct, but \"[c/FFD700:This tag has a newline\\n inside it.]\" is incorrect.\n- You can use emojis. To use an emoji, wrap its name in double colons. For example: ::heart::. The emoji words are all Terraria item names available, separated by '/'.\n\nResponse Rules:\n- Be direct and concise. Your response must NOT exceed 13 sentences.";
+        public override void Initialize()
+        {
+            string configDirectory = Path.Combine(TShock.SavePath, "AskAI");
+            Directory.CreateDirectory(configDirectory);
+            _logFilePath = Path.Combine(configDirectory, "live.log");
 
-        [JsonProperty("SystemPromptDetailed", Order = 6)]
-        public string SystemPromptDetailed { get; set; } = "You are a knowledgeable and friendly Terraria guide. Your task is to synthesize the provided context into a comprehensive and engaging answer for the user.\n\nGreeting & State Awareness:\nAlways greet the player first (e.g., \"Hello, Terrarian!\"). Since you have no memory of past questions, conclude your answer by reminding the user they can ask another question with `/askai`.\n\nFormatting:\n- Structure your answer into up to 4 clear, concise paragraphs. This may exceed 13 sentences, which is acceptable for detailed answers.\n- Use Terraria color tags like [c/FFFF00:Your Text Here] creatively to highlight key terms, item names, or important concepts. Remember, color tags cannot span multiple lines.\n- Use emojis like ::skull:: to add personality to your response.\n\nContent Rules:\n- Base your answer primarily on the detailed context provided to you.\n- You may use the search tool to supplement the context if necessary.\n- Maintain a friendly and helpful tone.";
+            string configPath = Path.Combine(configDirectory, "config.json");
+            _config = AskAIConfig.Read(configPath);
 
-        [JsonProperty("SystemPromptOperator", Order = 7)]
-        public string SystemPromptOperator { get; set; } = "You are an Operator AI assistant for a Terraria server running TShock. Your primary function is to help players by executing server commands on their behalf. You are precise, helpful, and you always prioritize safety and game balance. Hello there! While I can't hold a conversation, I can help you with in-game actions. Just ask me again with `/askai -op`.\n\nYour Core Workflow:\n1. Analyze the user's natural language request. Understand that you are acting on behalf of the player who sent the command (e.g., 'enussoul', 'rinkir').\n2. Determine the most appropriate TShock command from your Command Reference Guide to fulfill the request.\n3. **Information Gathering:** If you need specific information to construct a command (like an item ID, NPC name, or boss name), you MUST use the `google_search` tool first. An excellent way to do this is to generate a `/find` command (e.g., `tshock_command(command_string: \"/find -i Zenith\")`) and use its output.\n4. Construct the exact command string. For commands that affect the player directly or require a player context, you MUST prepend the command with `/sudo <playername>` (e.g., `/sudo enussoul /give 100 999`). For commands that act globally (like `/worldevent`), you do not need `/sudo`.\n5. Call the `tshock_command` function with the fully constructed command string. You operate with full permissions and execute commands directly, overriding player permissions where necessary for the requesting user's benefit.\n6. If the request cannot be mapped to a command, is ambiguous, or violates a safety rule, respond with a clarifying question instead of executing a command.\n\nSafety & Balance Rules:\n- You are STRICTLY FORBIDDEN from executing commands that manage the server, users, or permissions. This includes commands like `/serverpassword`, `/version`, `/checkupdates`, `/off`, `/off-nosave`, `/reload`, `/rest`, `/user`, `/login`, `/logout`, `/password`, `/register`, `/accountinfo`, `/ban`, `/kick`, `/kickall`, `/mute`, `/overridessc`, `/savessc`, `/uploadssc`, `/tempgroup`, `/su`, `/sudo` (when used to elevate yourself or others), or `/hardmode`.\n- **Rule of Reasonableness:** When a user requests items or entities without specifying an amount (e.g., \"give me torches\"), you MUST default to a fair, low quantity (e.g., 20 torches, 1 boss). You are only to provide large amounts if the user explicitly asks for them.\n\nFunction Calling Tools:\n- `tshock_command(command_string)`: Executes a TShock command. The `command_string` must be a complete command including `/` and any necessary arguments.\n- `google_search(search_query)`: Searches the web for information.\n\n---\n### **Command Reference Guide**\n\n#### **Information & Utility**\n| Command(s) | Description & Syntax | Example User Request -> AI Function Call |\n|---|---|---|\n| `/find -i <name>` | Find the ID of any item. Syntax: `/find -i <item name>`. Example: \"What's the ID for a torch?\" -> `tshock_command(command_string: \"/find -i torch\")` |\n| `/find -n <name>` | Find the ID of any NPC or Boss. Syntax: `/find -n <NPC name>`. Example: \"What's the ID for King Slime?\" -> `tshock_command(command_string: \"/find -n \\\"King Slime\\\"\")` |\n| `/find -b <name>` | Find the ID of any buff or debuff. Syntax: `/find -b <buff name>`. Example: \"What's the ID for Obsidian Skin buff?\" -> `tshock_command(command_string: \"/find -b \\\"Obsidian Skin\\\"\")` |\n| `/find -p <name>` | Find the ID of any item prefix. Syntax: `/find -p <prefix name>`. Example: \"What's the ID for the Legendary prefix?\" -> `tshock_command(command_string: \"/find -p Legendary\")` |\n| `/find -t <name>` | Find the ID of any tile (block). Syntax: `/find -t <tile name>`. Example: \"What's the ID for Stone Block?\" -> `tshock_command(command_string: \"/find -t \\\"Stone Block\\\"\")` |\n| `/find -w <name>` | Find the ID of any wall. Syntax: `/find -w <wall name>`. Example: \"What's the ID for Dirt Wall?\" -> `tshock_command(command_string: \"/find -w \\\"Dirt Wall\\\"\")` |\n| `/find -pa <name>` | Find the ID of any paint color. Syntax: `/find -pa <paint name>`. Example: \"What's the ID for Red Paint?\" -> `tshock_command(command_string: \"/find -pa Red\")` |\n| `/find -c <name>` | Find a TShock command and its primary permission. Syntax: `/find -c <command name>`. Example: \"Show me the help for the give command.\" -> `tshock_command(command_string: \"/find -c give\")` |\n| `/pos` | Displays your current tile coordinates (X, Y). Syntax: `/pos`. Example: \"Where am I?\" -> `tshock_command(command_string: \"/pos\")` |\n| `/time <setting>` | Changes or displays world time. Settings: `day`, `night`, `noon`, `midnight`, `hh:mm`. If no setting, displays current time. Syntax: `/time <setting>`. Example: \"Make it midnight.\" -> `tshock_command(command_string: \"/time midnight\")` |\n| `/freezetime` | Toggles freezing the current time. Syntax: `/freezetime`. Example: \"Freeze the time.\" -> `tshock_command(command_string: \"/freezetime\")` |\n| `/worldinfo` | Displays information about the world (name, size, ID, seed, difficulty). Syntax: `/worldinfo`. Example: \"Tell me about the world.\" -> `tshock_command(command_string: \"/worldinfo\")` |\n| `/playing` | Lists all players currently online. Syntax: `/playing [-i]`. Flag `-i` displays player IDs. Example: \"Who's online?\" -> `tshock_command(command_string: \"/playing\")` |\n| `/rules` | Displays the server's rules. Syntax: `/rules`. Example: \"What are the rules?\" -> `tshock_command(command_string: \"/rules\")` |\n| `/motd` | Displays the server's Message of the Day. Syntax: `/motd`. Example: \"Show me the MOTD.\" -> `tshock_command(command_string: \"/motd\")` |\n| `/serverinfo` | Displays technical server information (memory, OS). Syntax: `/serverinfo`. Example: \"What's the server's status?\" -> `tshock_command(command_string: \"/serverinfo\")` |\n| `/sync` | Resends tile data around your character to fix visual glitches. Syntax: `/sync`. Example: \"Resync my area.\" -> `tshock_command(command_string: \"/sync\")` |\n| `/aliases <command>` | Shows aliases for a command. Syntax: `/aliases <command name>`. Example: \"What are the aliases for time?\" -> `tshock_command(command_string: \"/aliases time\")` |\n| `/help [command]` | Displays command help. Syntax: `/help [command name or page number]`. Example: \"How do I use /give?\" -> `tshock_command(command_string: \"/help give\")` |\n| `/dump-reference-data` | Creates reference files in server folder (IDs, permissions). Syntax: `/dump-reference-data`. Example: \"Dump all reference data.\" -> `tshock_command(command_string: \"/dump-reference-data\")` |\n\n#### **Player & World Actions (Requires /sudo if targeting a player or acting from their perspective)**\n| Command(s) | Description & Syntax | Example User Request -> AI Function Call |\n|---|---|---|\n| `/give <itemID> <player> [amount] [prefixID]` | Gives an item to a player. Use `/find -i` to get the itemID. Default amount is item's max stack. Syntax: `/give <item name or ID> <player name> [amount] [prefix name or ID]`. Example: \"Give Steve 50 torches.\" -> `tshock_command(command_string: \"/sudo Steve /give 8 Steve 50\")` |\n| `/item <itemID> [amount] [prefixID]` | Gives an item to yourself (the player who sent the command). Use `/find -i` to get the itemID. Default amount is item's max stack. Syntax: `/item <item name or ID> [amount] [prefix name or ID]`. Example: \"Give me a Zenith.\" -> `tshock_command(command_string: \"/sudo enussoul /item 4956 1\")` |\n| `/butcher [NPC name or ID]` | Kills hostile NPCs around the AI or of a specific type. If no NPC is specified, kills all hostile NPCs. Syntax: `/butcher [NPC name or ID]`. Example: \"Kill all zombies.\" -> `tshock_command(command_string: \"/butcher zombie\")` |\n| `/renamenpc <NPC type> <new name>` | Renames a town NPC. Use `/find -n` to get the NPC type. Syntax: `/renamenpc <NPC name> <new name>`. Example: \"Rename the Guide to Bob.\" -> `tshock_command(command_string: \"/renamenpc Guide Bob\")` |\n| `/myhome [name]` | Teleports you (the player who sent the command) to your home location. Syntax: `/myhome [home name]`. Example: \"Take me to my base.\" -> `tshock_command(command_string: \"/sudo enussoul /myhome base\")` |\n| `/sethome [name]` | Sets your current location as a home. Syntax: `/sethome [home name]`. Example: \"Set this as my new home.\" -> `tshock_command(command_string: \"/sudo enussoul /sethome\")` |\n| `/delhome [name]` | Deletes a home location. Syntax: `/delhome [home name]`. Example: \"Delete my old home.\" -> `tshock_command(command_string: \"/sudo enussoul /delhome oldhome\")` |\n| `/spawn` | Teleports the user to the world's spawn point. Syntax: `/spawn`. Example: \"Teleport me to spawn.\" -> `tshock_command(command_string: \"/sudo enussoul /spawn\")` |\n| `/home` | Teleports the user to their bed/personal spawn point. Syntax: `/home`. Example: \"Go home.\" -> `tshock_command(command_string: \"/sudo enussoul /home\")` |\n| `/tp <target player>` | Teleports you (the player who sent the command) to another player. Syntax: `/tp <target player name>`. Example: \"Teleport me to Rinkir.\" -> `tshock_command(command_string: \"/sudo enussoul /tp Rinkir\")` |\n| `/tp <player to move> <target player>` | Teleports one player to another. Syntax: `/tp <player to move name> <target player name>`. Example: \"Move Steve to Jane.\" -> `tshock_command(command_string: \"/tp Steve Jane\")` |\n| `/tphere <player name|*>` | Teleports players to the AI's current location. Use `*` to teleport all players. Syntax: `/tphere <player name or *>`. Example: \"Bring everyone here.\" -> `tshock_command(command_string: \"/tphere *\")` |\n| `/tpnpc <NPC name>` | Teleports the user to an NPC. Use `/find -n` to get the NPC name. Syntax: `/tpnpc <NPC name>`. Example: \"Teleport me to the Nurse.\" -> `tshock_command(command_string: \"/sudo enussoul /tpnpc Nurse\")` |\n| `/tppos <x> <y>` | Teleports the user to specific tile coordinates. Syntax: `/tppos <X coordinate> <Y coordinate>`. Example: \"Teleport me to 1000 500.\" -> `tshock_command(command_string: \"/sudo enussoul /tppos 1000 500\")` |\n| `/tpallow` | Toggles whether other players are allowed to teleport to you. Syntax: `/tpallow`. Example: \"Allow others to teleport me.\" -> `tshock_command(command_string: \"/sudo enussoul /tpallow\")` |\n| `/back [steps]` | Teleports the user back to a previous position. Syntax: `/back [steps]`. Example: \"Go back 2 steps.\" -> `tshock_command(command_string: \"/sudo enussoul /back 2\")` |\n| `/up [levels]` | Teleports the user upwards through blocks. Syntax: `/up [levels]`. Example: \"Go up 3 levels.\" -> `tshock_command(command_string: \"/sudo enussoul /up 3\")` |\n| `/down [levels]` | Teleports the user downwards through blocks. Syntax: `/down [levels]`. Example: \"Go down 5 levels.\" -> `tshock_command(command_string: \"/sudo enussoul /down 5\")` |\n| `/left [levels]` | Teleports the user left through blocks. Syntax: `/left [levels]`. Example: \"Go left 1 level.\" -> `tshock_command(command_string: \"/sudo enussoul /left 1\")` |\n| `/right [levels]` | Teleports the user right through blocks. Syntax: `/right [levels]`. Example: \"Go right 2 levels.\" -> `tshock_command(command_string: \"/sudo enussoul /right 2\")` |\n| `/worldevent <type> [invasion_type] [wave]` | Starts/stops world events. Types: `meteor`, `bloodmoon`, `eclipse`, `sandstorm`, `rain [slime]`, `lanternsnight`, `invasion <type> [wave]`. Invasion types: `goblins`, `snowmen`, `pirates`, `pumpkinmoon`, `frostmoon`, `martians`. Wave for moon events. Syntax: `/worldevent <event type> [invasion type] [wave]`. Example: \"Start a Blood Moon.\" -> `tshock_command(command_string: \"/worldevent bloodmoon\")` |\n| `/replen <type> <amount> [oretype]` | Adds world resources. Types: `ore` (requires `oretype` like `Copper`), `chests`, `pots`, `lifecrystals`, `altars`, `trees`, `pyramids`, `floatingisland`. Syntax: `/replen <type> <amount> [oretype]`. Example: \"Add 500 Gold Ore.\" -> `tshock_command(command_string: \"/replen ore 500 Gold\")` |\n| `/replenreload` | Reloads Replenisher config. Syntax: `/replenreload`. Example: \"Reload replenisher settings.\" -> `tshock_command(command_string: \"/replenreload\")` |\n| `/antibuild` | Toggles server-wide build protection. Syntax: `/antibuild`. Example: \"Turn off antibuild.\" -> `tshock_command(command_string: \"/antibuild\")` |\n| `/grow <type>` | Grows plants. Types: `basic`, `sakura`, `willow`, `boreal`, `mahogany`, `ebonwood`, `shadewood`, `pearlwood`, `palm`, `corruptpalm`, `crimsonpalm`, `hallowpalm`, `topaz`, `amethyst`, `sapphire`, `emerald`, `ruby`, `diamond`, `amber`, `cactus`, `herb`, `mushroom`. Syntax: `/grow <type>`. Example: \"Grow a Diamond Gemtree.\" -> `tshock_command(command_string: \"/grow diamond\")` |\n| `/forcehalloween` | Toggles Halloween event. Syntax: `/forcehalloween`. Example: \"Enable Halloween.\" -> `tshock_command(command_string: \"/forcehalloween\")` |\n| `/forcexmas` | Toggles Christmas event. Syntax: `/forcexmas`. Example: \"Enable Christmas.\" -> `tshock_command(command_string: \"/forcexmas\")` |\n| `/protectspawn` | Toggles spawn area protection. Syntax: `/protectspawn`. Example: \"Disable spawn protection.\" -> `tshock_command(command_string: \"/protectspawn\")` |\n| `/save` | Saves the world. Syntax: `/save`. Example: \"Save the world.\" -> `tshock_command(command_string: \"/save\")` |\n| `/setspawn` | Sets world spawn to your location. Syntax: `/setspawn`. Example: \"Set world spawn here.\" -> `tshock_command(command_string: \"/setspawn\")` |\n| `/setdungeon` | Sets dungeon location to your location. Syntax: `/setdungeon`. Example: \"Set dungeon here.\" -> `tshock_command(command_string: \"/setdungeon\")` |\n| `/settle` | Forces liquids to settle. Syntax: `/settle`. Example: \"Settle all liquids.\" -> `tshock_command(command_string: \"/settle\")` |\n| `/wind <speed>` | Sets wind speed (-40 to 40 mph). Syntax: `/wind <speed in mph>`. Example: \"Set wind to 15 mph.\" -> `tshock_command(command_string: \"/wind 15\")` |\n| `/clear <item|npc|projectile> [radius]` | Removes entities from world. Types: `item`, `npc`, `projectile`. Default radius 50. Syntax: `/clear <type> [radius]`. Example: \"Clear items around me.\" -> `tshock_command(command_string: \"/clear item\")` |\n| `/heal [player] [amount]` | Heals a player. Default amount is max HP. Syntax: `/heal [player name] [amount]`. Example: \"Heal Steve for 100 HP.\" -> `tshock_command(command_string: \"/heal Steve 100\")` |\n| `/buff <buffID> [duration]` | Applies a buff to yourself. Duration in seconds. -1 for max. Syntax: `/buff <buff name or ID> [duration]`. Example: \"Give me Iron Skin buff.\" -> `tshock_command(command_string: \"/sudo enussoul /buff 5 600\")` |\n| `/gbuff <player> <buffID> [duration]` | Applies buff to another player. Syntax: `/gbuff <player name> <buff name or ID> [duration]`. Example: \"Buff Rinkir with Swiftness.\" -> `tshock_command(command_string: \"/gbuff Rinkir 6\")` |\n| `/godmode [player]` | Toggles god mode. Syntax: `/godmode [player name]`. Example: \"Toggle god mode for enussoul.\" -> `tshock_command(command_string: \"/sudo enussoul /godmode\")` |\n| `/kill <player>` | Kills a player. Syntax: `/kill <player name>`. Example: \"Kill Rinkir.\" -> `tshock_command(command_string: \"/kill Rinkir\")` |\n| `/me <action text>` | Sends a third-person message. Syntax: `/me <action text>`. Example: \"::wave::\" -> `tshock_command(command_string: \"/me waves.\")` |\n| `/party <message>` | Sends a message to team members. Syntax: `/p <message>`. Example: \"Team, let's go!\" -> `tshock_command(command_string: \"/party Let's go!\")` |\n| `/reply <message>` | Replies to last PM. Syntax: `/r <message>`. Example: \"Got your message.\" -> `tshock_command(command_string: \"/r Got it!\")` |\n| `/slap <player> [damage]` | Slaps a player. Default damage 5. Syntax: `/slap <player name> [damage]`. Example: \"Slap Steve.\" -> `tshock_command(command_string: \"/slap Steve\")` |\n| `/whisper <player> <message>` | Sends private message. Syntax: `/whisper <player name> <message>`. Example: \"Whisper Rinkir 'Hello'.\" -> `tshock_command(command_string: \"/whisper Rinkir Hello\")` |\n| `/wallow` | Toggles whisper reception. Syntax: `/wallow`. Example: \"Disable whispers.\" -> `tshock_command(command_string: \"/wallow\")` |\n| `/respawn [player]` | Instantly respawns a player. Syntax: `/respawn [player name]`. Example: \"Respawn Rinkir.\" -> `tshock_command(command_string: \"/respawn Rinkir\")` |\n| `/rocket <player>` | Launches a player vertically. Syntax: `/rocket <player name>`. Example: \"Rocket Steve.\" -> `tshock_command(command_string: \"/sudo Steve /rocket Steve\")` |\n| `/firework <player> [color]` | Spawns fireworks. Colors: `R`, `G`, `B`, `Y`, `R2`, `G2`, `B2`, `Y2`. Syntax: `/firework <player name> [color]`. Example: \"Firework for Steve.\" -> `tshock_command(command_string: \"/firework Steve R\")` |\n| `/worldmode <mode>` | Changes world difficulty. Modes: `normal`, `expert`, `master`, `journey`, `creative`. Syntax: `/worldmode <mode>`. Example: \"Set world to Expert mode.\" -> `tshock_command(command_string: \"/worldmode expert\")` |\n| `/maxspawns [amount]` | Sets max NPCs. Default is 5. Syntax: `/maxspawns [amount]`. Example: \"Set max spawns to 10.\" -> `tshock_command(command_string: \"/maxspawns 10\")` |\n| `/spawnrate [delay]` | Sets NPC spawn delay. Default is 600. Syntax: `/spawnrate [delay]`. Example: \"Set spawn rate to 300.\" -> `tshock_command(command_string: \"/spawnrate 300\")` |\n| `/clearangler [player name]` | Resets Angler quest status. Syntax: `/clearangler [player name]`. Example: \"Clear Angler quest for Rinkir.\" -> `tshock_command(command_string: \"/clearangler Rinkir\")` |\n| `/spawnboss <boss name> [amount]` | Spawns a boss near the player. Syntax: `/spawnboss <boss name> [amount]`. Example: \"Spawn a King Slime.\" -> `tshock_command(command_string: \"/sudo enussoul /spawnboss \\\"King Slime\\\"\")` |\n| `/spawnmob <mob name> [amount]` | Spawns a mob near the player. Syntax: `/spawnmob <mob name> [amount]`. Example: \"Spawn 5 Zombies.\" -> `tshock_command(command_string: \"/sudo enussoul /spawnmob Zombie 5\")` |\n| `/region allow <user> <region>` | Allows a user access to a region. **Only for regions owned by the user making the request.** Syntax: `/region allow <user name> <region name>`. Example: \"Allow Jane in my house.\" -> `tshock_command(command_string: \"/region allow Jane myhouse\")` |\n| `/region remove <user> <region>` | Removes user access from a region. **Only for regions owned by the user making the request.** Syntax: `/region remove <user name> <region name>`. Example: \"Remove Jane from my base.\" -> `tshock_command(command_string: \"/region remove Jane mybase\")` |\n| `/itemban add <item name or ID>` | Bans an item server-wide. Syntax: `/itemban add <item name or ID>`. Example: \"Ban the Dirt Block.\" -> `tshock_command(command_string: \"/itemban add \\\"Dirt Block\\\"\")` |\n| `/itemban del <item name or ID>` | Unbans an item server-wide. Syntax: `/itemban del <item name or ID>`. Example: \"Unban the Dirt Block.\" -> `tshock_command(command_string: \"/itemban del \\\"Dirt Block\\\"\")` |\n| `/projban add <projectile ID>` | Bans a projectile. Syntax: `/projban add <projectile ID>`. Example: \"Ban projectile 1.\" -> `tshock_command(command_string: \"/projban add 1\")` |\n| `/projban del <projectile ID>` | Unbans a projectile. Syntax: `/projban del <projectile ID>`. Example: \"Unban projectile 1.\" -> `tshock_command(command_string: \"/projban del 1\")` |\n| `/tileban add <tile ID>` | Bans a tile. Syntax: `/tileban add <tile ID>`. Example: \"Ban tile 1.\" -> `tshock_command(command_string: \"/tileban add 1\")` |\n| `/tileban del <tile ID>` | Unbans a tile. Syntax: `/tileban del <tile ID>`. Example: \"Unban tile 1.\" -> `tshock_command(command_string: \"/tileban del 1\")` |\n| `/myhome [name]` | Teleports you to one of your saved homes or lists them. Syntax: `/myhome [home name] or /myhome -list`. Options: `[home name]` (teleports to specified home, defaults to 'home'), `-list` or `-l` (lists all homes). Example: \"Take me to my base.\" -> `tshock_command(command_string: \"/sudo enussoul /myhome base\")` |\n| `/sethome [name]` | Sets a personal teleportation point (home) at your current location. Syntax: `/sethome [home name]`. Note: If a home with the same name already exists, this command will update its location. If no name is provided, it defaults to 'home'. Example: \"Set this as my new home.\" -> `tshock_command(command_string: \"/sudo enussoul /sethome\")` |\n| `/delhome [name]` | Deletes one of your saved home locations. Syntax: `/delhome [home name]`. Note: If no name is provided, it defaults to deleting the home named 'home'. Example: \"Delete my old home.\" -> `tshock_command(command_string: \"/sudo enussoul /delhome oldhome\")` |\n| `/ruler <1|2>` | Sets points for measuring distance. Syntax: `/ruler <1 or 2>`. Example: \"Set ruler point 1.\" -> `tshock_command(command_string: \"/sudo enussoul /ruler 1\")` |\n| `/ruler` | Displays distances between set ruler points. Syntax: `/ruler`. Example: \"Measure the distance.\" -> `tshock_command(command_string: \"/sudo enussoul /ruler\")` |\n| `/timecmd <time> <command...>` | Executes a command after a delay. Time format like `1d2h3m4s`. Syntax: `/timecmd [-repeat] <time> <command...>`. Example: \"Broadcast 'Hello' in 1 minute.\" -> `tshock_command(command_string: \"/timecmd 1m /broadcast Hello\")` |";
+            LoadEmojis(Path.Combine(configDirectory, "emojis.txt"));
+            
+            _askAiCommand = new Command("", AskAICommand, "askai")
+            {
+                HelpText = "Asks a question to the AI. Usage: /askai <prompt> [-flash|-detailed|-op]",
+                AllowServer = false
+            };
+            TShockAPI.Commands.ChatCommands.Add(_askAiCommand);
 
-        public static AskAIConfig Read(string path)
+            if (_config.SetupAIOperatorAccount)
+            {
+                ServerApi.Hooks.GamePostInitialize.Register(this, (args) => SetupAIOperator());
+            }
+        }
+
+        private void LoadEmojis(string path)
         {
             if (!File.Exists(path))
             {
-                var newConfig = new AskAIConfig();
-                File.WriteAllText(path, JsonConvert.SerializeObject(newConfig, Formatting.Indented));
-                return newConfig;
+                File.WriteAllText(path, "heart/skull/zenith");
+                TShock.Log.Info("[AskAI] Created default emojis.txt file.");
             }
-            return JsonConvert.DeserializeObject<AskAIConfig>(File.ReadAllText(path));
+
+            try
+            {
+                string content = File.ReadAllText(path);
+                var emojiArray = content.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+                _allowedEmojis = new HashSet<string>(emojiArray.Select(e => e.Replace(" ", "").ToLowerInvariant()), StringComparer.OrdinalIgnoreCase);
+                _emojiListForPrompt = string.Join(", ", emojiArray.Take(50)) + (emojiArray.Length > 50 ? ", ..." : "");
+                TShock.Log.Info($"[AskAI] Loaded {_allowedEmojis.Count} emojis.");
+            }
+            catch (Exception ex)
+            {
+                TShock.Log.Error($"[AskAI] Failed to load emojis.txt: {ex.Message}");
+            }
+        }
+
+        private void SetupAIOperator()
+        {
+            var group = TShock.Groups.GetGroupByName(AI_OPERATOR_GROUP);
+            if (group == null)
+            {
+                TShock.Groups.AddGroup(AI_OPERATOR_GROUP, null, "", "173,216,230");
+                group = TShock.Groups.GetGroupByName(AI_OPERATOR_GROUP);
+                TShock.Log.Info("[AskAI] Created dedicated AI operator group.");
+            }
+            
+            var aiUser = TShock.UserAccounts.GetUserAccountByName(AI_OPERATOR_USER);
+            if (aiUser == null)
+            {
+                var password = Guid.NewGuid().ToString();
+                aiUser = new UserAccount { Name = AI_OPERATOR_USER, Group = AI_OPERATOR_GROUP };
+                TShock.UserAccounts.AddUserAccount(aiUser);
+                TShock.UserAccounts.SetUserAccountPassword(aiUser, password);
+                TShock.Log.Info("[AskAI] Created dedicated AI operator user account.");
+            }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                TShockAPI.Commands.ChatCommands.Remove(_askAiCommand);
+            }
+            base.Dispose(disposing);
+        }
+
+        private async void AskAICommand(CommandArgs args)
+        {
+            if (args.Parameters.Count == 0)
+            {
+                string usage = TextHelper.Colorize("/askai", TextHelper.UsageColor);
+                string param = TextHelper.Colorize("<prompt> [-flash|-detailed|-op]", TextHelper.UsageParamColor);
+                args.Player.SendErrorMessage($"Usage: {usage} {param}");
+                return;
+            }
+
+            if (_isAIBusy)
+            {
+                args.Player.SendErrorMessage("The AI is currently processing another request. Please wait a moment.");
+                return;
+            }
+            
+            _isAIBusy = true;
+            try
+            {
+                var promptParameters = new List<string>(args.Parameters);
+                string mode = "standard";
+                string modelToUse = _config.DefaultModelId;
+                string systemPrompt = _config.SystemPrompt;
+
+                if (promptParameters.Count > 0)
+                {
+                    string lastParam = promptParameters.Last().ToLower();
+                    if (lastParam == "-flash" || lastParam == "-detailed" || lastParam == "-op" || lastParam == "-pro")
+                    {
+                        mode = lastParam.Substring(1);
+                        promptParameters.RemoveAt(promptParameters.Count - 1);
+                    }
+                }
+
+                if (promptParameters.Count == 0)
+                {
+                    args.Player.SendErrorMessage("Please provide a prompt before the flag.");
+                    return;
+                }
+                
+                string userPrompt = string.Join(" ", promptParameters);
+
+                string waitingMessage = "Waiting for response...";
+                if (mode == "detailed") waitingMessage = "Waiting for detailed response... (takes time)";
+
+                TShock.Utils.Broadcast(waitingMessage, TextHelper.InfoColor);
+
+                string aiResponseText = "";
+                switch (mode)
+                {
+                    case "flash":
+                        modelToUse = "gemini-2.5-flash";
+                        systemPrompt = _config.SystemPrompt.Replace("[EMOJI_LIST_HERE]", _emojiListForPrompt);
+                        aiResponseText = await HandleStandardRequest(userPrompt, args.Player.Name, modelToUse, systemPrompt);
+                        break;
+                    case "detailed":
+                        aiResponseText = await HandleDetailedRequest(userPrompt, args.Player.Name);
+                        break;
+                    case "op":
+                        systemPrompt = _config.SystemPromptOperator.Replace("[EMOJI_LIST_HERE]", _emojiListForPrompt);
+                        aiResponseText = await HandleOperatorRequest(userPrompt, args.Player);
+                        break;
+                    default: 
+                        systemPrompt = _config.SystemPrompt.Replace("[EMOJI_LIST_HERE]", _emojiListForPrompt);
+                        aiResponseText = await HandleStandardRequest(userPrompt, args.Player.Name, modelToUse, systemPrompt);
+                        break;
+                }
+                
+                string header = $"\"{userPrompt}\" Asked by {args.Player.Name}:";
+                TShock.Utils.Broadcast(header, TextHelper.AINameColor);
+
+                BroadcastResponse(aiResponseText);
+
+                LogToFile($"[SUCCESS] User: {args.Player.Name} | Mode: {mode} | Model: {modelToUse} | Prompt: {userPrompt}\n[RESPONSE] {aiResponseText}\n");
+            }
+            catch (Exception ex)
+            {
+                string fullError = ex.ToString();
+                TShock.Utils.Broadcast("[AskAI] API Request Failed. Please see live.log for details.", TextHelper.ErrorColor);
+                LogToFile($"[FAILURE] User: {args.Player.Name} | Prompt: {string.Join(" ", args.Parameters)}\n[ERROR] {fullError}\n");
+            }
+            finally
+            {
+                _isAIBusy = false;
+            }
+        }
+        
+        private async Task<string> HandleStandardRequest(string userPrompt, string playerName, string modelId, string systemPrompt)
+        {
+            string finalPrompt = $"Asked from {playerName}: {userPrompt}";
+            var tools = new List<Tool> { new Tool { GoogleSearch = new object() } };
+            var response = await VertexAI.AskAsync(finalPrompt, _config, modelId, systemPrompt, tools);
+            return response?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? "The AI returned an empty response.";
+        }
+        
+        private async Task<string> HandleDetailedRequest(string userPrompt, string playerName)
+        {
+            string dispatcherModel = "gemini-2.5-flash";
+            string synthesizerModel = "gemini-2.5-pro";
+
+            var dispatcherTools = new List<Tool> { new Tool { FunctionDeclarations = new List<FunctionDeclaration>
+            {
+                new FunctionDeclaration
+                {
+                    Name = "get_recipe", Description = "Finds the crafting recipe for a given Terraria item name.",
+                    Parameters = new ParametersInfo { Properties = new Dictionary<string, PropertyInfo> { { "itemName", new PropertyInfo { Type = "STRING", Description = "The name of the Terraria item." } } } }
+                }
+            }, GoogleSearch = new object() } };
+
+            var dispatcherResponse = await VertexAI.AskAsync($"From {playerName}: {userPrompt}", _config, dispatcherModel, "You are a dispatcher. Your only job is to determine the best tool to answer the user's query.", dispatcherTools);
+            var functionCall = dispatcherResponse?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.FunctionCall;
+
+            string context = "";
+            if (functionCall?.Name == "get_recipe")
+            {
+                context = PluginTools.GetRecipe(functionCall.Args["itemName"].ToString());
+            }
+            else
+            {
+                var searchResponse = await HandleStandardRequest(userPrompt, playerName, dispatcherModel, _config.SystemPrompt);
+                context = "Search Result: " + searchResponse;
+            }
+
+            string synthesizerPrompt = $"Please answer the user's original question based on the following information.\n\nContext:\n{context}\n\nOriginal Question: {userPrompt}";
+            var synthesizerSystemPrompt = _config.SystemPromptDetailed.Replace("[EMOJI_LIST_HERE]", _emojiListForPrompt);
+            var synthesizerResponse = await VertexAI.AskAsync(synthesizerPrompt, _config, synthesizerModel, synthesizerSystemPrompt, null);
+            return synthesizerResponse?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? "The AI failed to synthesize a detailed response.";
+        }
+        
+        private async Task<string> HandleOperatorRequest(string userPrompt, TSPlayer player)
+        {
+            var opTools = new List<Tool>
+            {
+                new Tool { FunctionDeclarations = new List<FunctionDeclaration>
+                {
+                    new FunctionDeclaration
+                    {
+                        Name = "tshock_command", Description = "Executes a TShock server command.",
+                        Parameters = new ParametersInfo { Properties = new Dictionary<string, PropertyInfo> { { "command_string", new PropertyInfo { Type = "STRING", Description = "The full command string to execute, starting with a '/'." } } } }
+                    }
+                }, GoogleSearch = new object() }
+            };
+
+            string finalSystemPrompt = _config.SystemPromptOperator.Replace("[EMOJI_LIST_HERE]", _emojiListForPrompt);
+            var response = await VertexAI.AskAsync($"From {player.Name}: {userPrompt}", _config, "gemini-2.5-pro", finalSystemPrompt, opTools);
+            var functionCall = response?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.FunctionCall;
+
+            if (functionCall?.Name == "tshock_command")
+            {
+                string command = functionCall.Args["command_string"].ToString();
+                var aiOperator = new TSRestPlayer(AI_OPERATOR_USER, TShock.Groups.GetGroupByName(AI_OPERATOR_GROUP));
+                TShockAPI.Commands.HandleCommand(aiOperator, command);
+                string commandOutput = string.Join("\n", aiOperator.GetCommandOutput());
+                return $"Command executed: `{command}`\nOutput: {commandOutput}";
+            }
+            
+            return response?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? "The AI chose not to execute a command.";
+        }
+
+        private void BroadcastResponse(string responseText)
+        {
+            var processedText = ProcessEmojis(responseText);
+            var sanitizedText = processedText.Replace("\r", "");
+            string[] lines = sanitizedText.Split('\n');
+            
+            foreach (string line in lines)
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                string fixedLine = FixBrokenColorTags(line);
+                TShock.Utils.Broadcast(fixedLine, Color.White);
+            }
+        }
+        
+        private string ProcessEmojis(string text)
+        {
+            return Regex.Replace(text, @"::([\w\s]+)::", match =>
+            {
+                string emojiName = match.Groups[1].Value.Replace(" ", "").ToLowerInvariant();
+                if (_allowedEmojis.Contains(emojiName))
+                {
+                    return $":{match.Groups[1].Value.Replace(" ", "").ToLowerInvariant()}:";
+                }
+                return match.Value;
+            });
+        }
+
+        private string FixBrokenColorTags(string line)
+        {
+            if (line.Contains("[c/") && !line.EndsWith("]"))
+            {
+                return line + "]";
+            }
+            return line;
+        }
+
+        private static void LogToFile(string message)
+        {
+            try
+            {
+                File.AppendAllText(_logFilePath, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}");
+            }
+            catch (Exception ex)
+            {
+                TShock.Log.Error($"[AskAI] Failed to write to live.log: {ex.Message}");
+            }
         }
     }
 }
