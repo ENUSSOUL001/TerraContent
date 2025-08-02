@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Terraria;
 using TerrariaApi.Server;
@@ -17,7 +18,7 @@ namespace AskAI
         public override string Author => "You";
         public override string Description => "Lets players ask questions to a powerful AI in-game.";
         public override string Name => "AskAI";
-        public override Version Version => new Version(2, 1, 0, 0);
+        public override Version Version => new Version(2, 3, 0, 0);
 
         private static AskAIConfig _config;
         private Command _askAiCommand;
@@ -26,6 +27,8 @@ namespace AskAI
         private const string AI_OPERATOR_GROUP = "ai_operator";
         
         private static bool _isAIBusy = false;
+        private static HashSet<string> _allowedEmojis = new HashSet<string>();
+        private static string _emojiListForPrompt = "none";
 
         public AskAI(Main game) : base(game) { }
 
@@ -37,6 +40,8 @@ namespace AskAI
 
             string configPath = Path.Combine(configDirectory, "config.json");
             _config = AskAIConfig.Read(configPath);
+
+            LoadEmojis(Path.Combine(configDirectory, "emojis.txt"));
             
             _askAiCommand = new Command("", AskAICommand, "askai")
             {
@@ -48,6 +53,28 @@ namespace AskAI
             if (_config.SetupAIOperatorAccount)
             {
                 ServerApi.Hooks.GamePostInitialize.Register(this, (args) => SetupAIOperator());
+            }
+        }
+
+        private void LoadEmojis(string path)
+        {
+            if (!File.Exists(path))
+            {
+                File.WriteAllText(path, "heart/skull/zenith");
+                TShock.Log.Info("[AskAI] Created default emojis.txt file.");
+            }
+
+            try
+            {
+                string content = File.ReadAllText(path);
+                var emojiArray = content.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+                _allowedEmojis = new HashSet<string>(emojiArray.Select(e => e.Replace(" ", "").ToLowerInvariant()), StringComparer.OrdinalIgnoreCase);
+                _emojiListForPrompt = string.Join(", ", emojiArray.Take(50)) + (emojiArray.Length > 50 ? ", ..." : "");
+                TShock.Log.Info($"[AskAI] Loaded {_allowedEmojis.Count} emojis.");
+            }
+            catch (Exception ex)
+            {
+                TShock.Log.Error($"[AskAI] Failed to load emojis.txt: {ex.Message}");
             }
         }
 
@@ -133,16 +160,18 @@ namespace AskAI
                 {
                     case "flash":
                         modelToUse = "gemini-2.5-flash";
+                        systemPrompt = _config.SystemPrompt.Replace("[EMOJI_LIST_HERE]", _emojiListForPrompt);
                         aiResponseText = await HandleStandardRequest(userPrompt, args.Player.Name, modelToUse, systemPrompt);
                         break;
                     case "detailed":
                         aiResponseText = await HandleDetailedRequest(userPrompt, args.Player.Name);
                         break;
                     case "op":
-                        systemPrompt = _config.SystemPromptOperator;
+                        systemPrompt = _config.SystemPromptOperator.Replace("[EMOJI_LIST_HERE]", _emojiListForPrompt);
                         aiResponseText = await HandleOperatorRequest(userPrompt, args.Player);
                         break;
                     default: 
+                        systemPrompt = _config.SystemPrompt.Replace("[EMOJI_LIST_HERE]", _emojiListForPrompt);
                         aiResponseText = await HandleStandardRequest(userPrompt, args.Player.Name, modelToUse, systemPrompt);
                         break;
                 }
@@ -203,7 +232,8 @@ namespace AskAI
             }
 
             string synthesizerPrompt = $"Please answer the user's original question based on the following information.\n\nContext:\n{context}\n\nOriginal Question: {userPrompt}";
-            var synthesizerResponse = await VertexAI.AskAsync(synthesizerPrompt, _config, synthesizerModel, _config.SystemPromptDetailed, null);
+            var synthesizerSystemPrompt = _config.SystemPromptDetailed.Replace("[EMOJI_LIST_HERE]", _emojiListForPrompt);
+            var synthesizerResponse = await VertexAI.AskAsync(synthesizerPrompt, _config, synthesizerModel, synthesizerSystemPrompt, null);
             return synthesizerResponse?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? "The AI failed to synthesize a detailed response.";
         }
         
@@ -221,7 +251,8 @@ namespace AskAI
                 }, GoogleSearch = new object() }
             };
 
-            var response = await VertexAI.AskAsync($"From {player.Name}: {userPrompt}", _config, "gemini-2.5-pro", _config.SystemPromptOperator, opTools);
+            string finalSystemPrompt = _config.SystemPromptOperator.Replace("[EMOJI_LIST_HERE]", _emojiListForPrompt);
+            var response = await VertexAI.AskAsync($"From {player.Name}: {userPrompt}", _config, "gemini-2.5-pro", finalSystemPrompt, opTools);
             var functionCall = response?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.FunctionCall;
 
             if (functionCall?.Name == "tshock_command")
@@ -238,7 +269,8 @@ namespace AskAI
 
         private void BroadcastResponse(string responseText)
         {
-            var sanitizedText = responseText.Replace("\r", "");
+            var processedText = ProcessEmojis(responseText);
+            var sanitizedText = processedText.Replace("\r", "");
             string[] lines = sanitizedText.Split('\n');
             
             foreach (string line in lines)
@@ -249,6 +281,19 @@ namespace AskAI
             }
         }
         
+        private string ProcessEmojis(string text)
+        {
+            return Regex.Replace(text, @"::([\w\s]+)::", match =>
+            {
+                string emojiName = match.Groups[1].Value.Replace(" ", "").ToLowerInvariant();
+                if (_allowedEmojis.Contains(emojiName))
+                {
+                    return $":{match.Groups[1].Value.Replace(" ", "").ToLowerInvariant()}:";
+                }
+                return match.Value;
+            });
+        }
+
         private string FixBrokenColorTags(string line)
         {
             if (line.Contains("[c/") && !line.EndsWith("]"))
