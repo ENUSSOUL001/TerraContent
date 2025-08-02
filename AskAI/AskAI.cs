@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Terraria;
 using TerrariaApi.Server;
 using TShockAPI;
@@ -100,7 +101,7 @@ namespace AskAI
                     return;
                 }
             }
-
+            
             var promptParameters = new List<string>(args.Parameters);
             string mode = "standard";
             string modelToUse = _config.DefaultModelId;
@@ -109,7 +110,7 @@ namespace AskAI
             if (promptParameters.Count > 0)
             {
                 string lastParam = promptParameters.Last().ToLower();
-                if (lastParam == "-flash" || lastParam == "-detailed" || lastParam == "-op")
+                if (lastParam == "-flash" || lastParam == "-detailed" || lastParam == "-op" || lastParam == "-pro")
                 {
                     mode = lastParam.Substring(1);
                     promptParameters.RemoveAt(promptParameters.Count - 1);
@@ -123,6 +124,7 @@ namespace AskAI
             }
             
             _lastUsage[args.Player.Name] = DateTime.UtcNow;
+
             string userPrompt = string.Join(" ", promptParameters);
 
             string waitingMessage = "Waiting for response...";
@@ -146,7 +148,7 @@ namespace AskAI
                         systemPrompt = _config.SystemPromptOperator;
                         aiResponseText = await HandleOperatorRequest(userPrompt, args.Player);
                         break;
-                    default:
+                    default: // Also handles -pro
                         aiResponseText = await HandleStandardRequest(userPrompt, args.Player.Name, modelToUse, systemPrompt);
                         break;
                 }
@@ -165,7 +167,7 @@ namespace AskAI
                 LogToFile($"[FAILURE] User: {args.Player.Name} | Mode: {mode} | Model: {modelToUse} | Prompt: {userPrompt}\n[ERROR] {fullError}\n");
             }
         }
-
+        
         private async Task<string> HandleStandardRequest(string userPrompt, string playerName, string modelId, string systemPrompt)
         {
             string finalPrompt = $"Asked from {playerName}: {userPrompt}";
