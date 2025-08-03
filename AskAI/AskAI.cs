@@ -20,7 +20,7 @@ namespace AskAI
         public override string Author => "You";
         public override string Description => "Lets players ask questions to a powerful AI in-game.";
         public override string Name => "AskAI";
-        public override Version Version => new Version(3, 4, 1, 0);
+        public override Version Version => new Version(3, 4, 2, 0);
 
         private static AskAIConfig _config;
         private Command _askAiCommand;
@@ -241,7 +241,6 @@ namespace AskAI
                     if (part.FunctionCall.Name == "tshock_command")
                     {
                         string command = part.FunctionCall.Args["command_string"].ToString();
-                        var group = TShock.Groups.GetGroupByName(AI_OPERATOR_GROUP);
                         var aiOperator = new TSRestPlayer(AI_OPERATOR_USER);
                         bool success = TShockAPI.Commands.HandleCommand(aiOperator, command);
                         if (success)
