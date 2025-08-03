@@ -2,13 +2,15 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Microsoft.Xna.Framework;
+using Newtonsoft.Json;
 using Terraria;
 using TerrariaApi.Server;
 using TShockAPI;
 using TShockAPI.DB;
-using Microsoft.Xna.Framework;
 
 namespace AskAI
 {
@@ -18,15 +20,15 @@ namespace AskAI
         public override string Author => "You";
         public override string Description => "Lets players ask questions to a powerful AI in-game.";
         public override string Name => "AskAI";
-        public override Version Version => new Version(2, 5, 0, 0);
+        public override Version Version => new Version(3, 4, 0, 0);
 
         private static AskAIConfig _config;
         private Command _askAiCommand;
         private static string _logFilePath;
         private const string AI_OPERATOR_USER = "AskAI_Operator";
         private const string AI_OPERATOR_GROUP = "ai_operator";
-        
-        private static bool _isAIBusy = false;
+        private static readonly HashSet<string> _playersWaiting = new HashSet<string>();
+        private static User _aiUserAccount;
 
         public AskAI(Main game) : base(game) { }
 
@@ -35,21 +37,23 @@ namespace AskAI
             string configDirectory = Path.Combine(TShock.SavePath, "AskAI");
             Directory.CreateDirectory(configDirectory);
             _logFilePath = Path.Combine(configDirectory, "live.log");
-
             string configPath = Path.Combine(configDirectory, "config.json");
             _config = AskAIConfig.Read(configPath);
-            
             _askAiCommand = new Command("", AskAICommand, "askai")
             {
-                HelpText = "Asks a question to the AI. Usage: /askai <prompt> [-flash|-detailed|-op]",
+                HelpText = "Asks a question to the AI. Usage: /askai <prompt> [-flash|-deep|-op]",
                 AllowServer = false
             };
             TShockAPI.Commands.ChatCommands.Add(_askAiCommand);
-
             if (_config.SetupAIOperatorAccount)
             {
-                ServerApi.Hooks.GamePostInitialize.Register(this, (args) => SetupAIOperator());
+                ServerApi.Hooks.GamePostInitialize.Register(this, OnPostInitialize);
             }
+        }
+
+        private void OnPostInitialize(EventArgs args)
+        {
+            SetupAIOperator();
         }
 
         private void SetupAIOperator()
@@ -57,18 +61,15 @@ namespace AskAI
             var group = TShock.Groups.GetGroupByName(AI_OPERATOR_GROUP);
             if (group == null)
             {
-                TShock.Groups.AddGroup(AI_OPERATOR_GROUP, null, "", "173,216,230");
-                group = TShock.Groups.GetGroupByName(AI_OPERATOR_GROUP);
-                TShock.Log.Info("[AskAI] Created dedicated AI operator group.");
+                TShock.Groups.AddGroup(AI_OPERATOR_GROUP, null, "*", "173,216,230");
+                TShock.Log.Info("[AskAI] Created dedicated AI operator group with full permissions.");
             }
-            
-            var aiUser = TShock.UserAccounts.GetUserAccountByName(AI_OPERATOR_USER);
-            if (aiUser == null)
+            _aiUserAccount = TShock.Users.GetUserByName(AI_OPERATOR_USER);
+            if (_aiUserAccount == null)
             {
                 var password = Guid.NewGuid().ToString();
-                aiUser = new UserAccount { Name = AI_OPERATOR_USER, Group = AI_OPERATOR_GROUP };
-                TShock.UserAccounts.AddUserAccount(aiUser);
-                TShock.UserAccounts.SetUserAccountPassword(aiUser, password);
+                TShock.Users.AddUser(new User(AI_OPERATOR_USER, password, Guid.NewGuid().ToString(), AI_OPERATOR_GROUP));
+                _aiUserAccount = TShock.Users.GetUserByName(AI_OPERATOR_USER);
                 TShock.Log.Info("[AskAI] Created dedicated AI operator user account.");
             }
         }
@@ -78,201 +79,231 @@ namespace AskAI
             if (disposing)
             {
                 TShockAPI.Commands.ChatCommands.Remove(_askAiCommand);
+                ServerApi.Hooks.GamePostInitialize.Deregister(this, OnPostInitialize);
             }
             base.Dispose(disposing);
         }
 
         private async void AskAICommand(CommandArgs args)
         {
-            if (args.Parameters.Count == 0)
+            string playerName = args.Player.Name;
+            if (_playersWaiting.Contains(playerName))
             {
-                string usage = TextHelper.Colorize("/askai", TextHelper.UsageColor);
-                string param = TextHelper.Colorize("<prompt> [-flash|-detailed|-op]", TextHelper.UsageParamColor);
-                args.Player.SendErrorMessage($"Usage: {usage} {param}");
+                args.Player.SendErrorMessage("Please wait for your current request to finish before sending a new one.");
                 return;
             }
-
-            if (_isAIBusy)
-            {
-                args.Player.SendErrorMessage("The AI is currently processing another request. Please wait a moment.");
-                return;
-            }
-            
-            _isAIBusy = true;
+            _playersWaiting.Add(playerName);
+            string userPrompt = string.Join(" ", args.Parameters);
+            string mode = "standard";
             try
             {
                 var promptParameters = new List<string>(args.Parameters);
-                string mode = "standard";
                 string modelToUse = _config.DefaultModelId;
-                string systemPrompt = _config.SystemPrompt;
-
-                if (promptParameters.Count > 0)
-                {
-                    string lastParam = promptParameters.Last().ToLower();
-                    if (lastParam == "-flash" || lastParam == "-detailed" || lastParam == "-op" || lastParam == "-pro")
-                    {
-                        mode = lastParam.Substring(1);
-                        promptParameters.RemoveAt(promptParameters.Count - 1);
-                    }
-                }
-
+                var flags = promptParameters.Where(p => p.StartsWith("-")).ToList();
+                promptParameters.RemoveAll(p => p.StartsWith("-"));
+                if (flags.Contains("-flash")) mode = "flash";
+                else if (flags.Contains("-deep")) mode = "deep";
+                else if (flags.Contains("-op")) mode = "op";
+                else if (flags.Contains("-pro")) mode = "standard";
                 if (promptParameters.Count == 0)
                 {
-                    args.Player.SendErrorMessage("Please provide a prompt before the flag.");
+                    args.Player.SendErrorMessage("Please provide a prompt.");
                     return;
                 }
-                
-                string userPrompt = string.Join(" ", promptParameters);
-
+                userPrompt = string.Join(" ", promptParameters);
                 string waitingMessage = "Waiting for response...";
-                if (mode == "detailed") waitingMessage = "Waiting for detailed response... (takes time)";
-
+                if (mode == "deep") waitingMessage = "Waiting for detailed response... (takes time)";
                 TShock.Utils.Broadcast(waitingMessage, TextHelper.InfoColor);
-
-                string aiResponseText = "";
+                List<Part> responseParts;
                 switch (mode)
                 {
                     case "flash":
                         modelToUse = "gemini-2.5-flash";
-                        aiResponseText = await HandleStandardRequest(userPrompt, args.Player.Name, modelToUse, systemPrompt);
+                        responseParts = await HandleStandardRequest(userPrompt, playerName, modelToUse);
                         break;
-                    case "detailed":
-                        aiResponseText = await HandleDetailedRequest(userPrompt, args.Player.Name);
+                    case "deep":
+                        bool extendTimeout = flags.Contains("-time");
+                        responseParts = await HandleDeepRequest(userPrompt, playerName, extendTimeout);
                         break;
                     case "op":
-                        systemPrompt = _config.SystemPromptOperator;
-                        aiResponseText = await HandleOperatorRequest(userPrompt, args.Player);
+                        responseParts = await HandleOperatorRequest(userPrompt, args.Player);
                         break;
-                    default: 
-                        aiResponseText = await HandleStandardRequest(userPrompt, args.Player.Name, modelToUse, systemPrompt);
+                    default:
+                        responseParts = await HandleStandardRequest(userPrompt, playerName, modelToUse);
                         break;
                 }
-                
-                string header = $"\"{userPrompt}\" Asked by {args.Player.Name}:";
+                string header = $"\"{userPrompt}\" Asked by {playerName}:";
                 TShock.Utils.Broadcast(header, TextHelper.AINameColor);
-
-                BroadcastResponse(aiResponseText);
-
-                LogToFile($"[SUCCESS] User: {args.Player.Name} | Mode: {mode} | Model: {modelToUse} | Prompt: {userPrompt}\n[RESPONSE] {aiResponseText}\n");
+                string fullResponseText = await ProcessAIResponseParts(responseParts, args.Player, userPrompt);
+                BroadcastResponse(fullResponseText);
+                LogToFile($"[SUCCESS] User: {playerName} | Mode: {mode} | Model: {modelToUse} | Prompt: {userPrompt}\n[RESPONSE] {fullResponseText}\n");
             }
             catch (Exception ex)
             {
                 string fullError = ex.ToString();
                 TShock.Utils.Broadcast("[AskAI] API Request Failed. Please see live.log for details.", TextHelper.ErrorColor);
-                LogToFile($"[FAILURE] User: {args.Player.Name} | Prompt: {string.Join(" ", args.Parameters)}\n[ERROR] {fullError}\n");
+                LogToFile($"[FAILURE] User: {playerName} | Prompt: {userPrompt}\n[ERROR] {fullError}\n");
             }
             finally
             {
-                _isAIBusy = false;
+                _playersWaiting.Remove(playerName);
             }
         }
-        
-        private async Task<string> HandleStandardRequest(string userPrompt, string playerName, string modelId, string systemPrompt)
-        {
-            string finalPrompt = $"Asked from {playerName}: {userPrompt}";
-            var tools = new List<Tool> { new Tool { GoogleSearch = new object() } };
-            var response = await VertexAI.AskAsync(finalPrompt, _config, modelId, systemPrompt, tools);
-            return response?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? "The AI returned an empty response.";
-        }
-        
-        private async Task<string> HandleDetailedRequest(string userPrompt, string playerName)
-        {
-            string dispatcherModel = "gemini-2.5-flash";
-            string synthesizerModel = "gemini-2.5-pro";
 
-            var dispatcherTools = new List<Tool>
+        private async Task<List<Part>> HandleStandardRequest(string userPrompt, string playerName, string modelId)
+        {
+            var plannerResponse = await ApiClients.CallVertexAPI($"From {playerName}: {userPrompt}", _config, "gemini-2.5-flash", "You are a research planner. Generate a JSON array of 3 diverse search queries to research the user's prompt. If the user is just saying hello, return a friendly greeting instead.", null);
+            var firstPartText = plannerResponse.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? "[]";
+            if (!firstPartText.Trim().StartsWith("["))
             {
-                new Tool { FunctionDeclarations = new List<FunctionDeclaration>
+                return plannerResponse.Candidates.First().Content.Parts;
+            }
+            var queryList = JsonConvert.DeserializeObject<List<string>>(firstPartText);
+            var researchContent = new StringBuilder();
+            foreach (var query in queryList)
+            {
+                var searchRequest = new ExaSearchRequest { Query = query, NumResults = 3 };
+                var searchResponse = await ApiClients.CallExaSearchAPI(searchRequest, _config);
+                foreach (var result in searchResponse.Results)
                 {
-                    new FunctionDeclaration
-                    {
-                        Name = "get_recipe", Description = "Finds the crafting recipe for a given Terraria item name.",
-                        Parameters = new ParametersInfo { Properties = new Dictionary<string, PropertyInfo> { { "itemName", new PropertyInfo { Type = "STRING", Description = "The name of the Terraria item." } } } }
-                    }
-                }},
-                new Tool { GoogleSearch = new object() }
-            };
-
-            var dispatcherResponse = await VertexAI.AskAsync($"From {playerName}: {userPrompt}", _config, dispatcherModel, "You are a dispatcher. Your only job is to determine the best tool to answer the user's query.", dispatcherTools);
-            var functionCall = dispatcherResponse?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.FunctionCall;
-
-            string context = "";
-            if (functionCall?.Name == "get_recipe")
-            {
-                context = PluginTools.GetRecipe(functionCall.Args["itemName"].ToString());
+                    researchContent.AppendLine(result.Text);
+                }
             }
-            else
-            {
-                var searchResponse = await HandleStandardRequest(userPrompt, playerName, dispatcherModel, _config.SystemPrompt);
-                context = "Search Result: " + searchResponse;
-            }
-
-            string synthesizerPrompt = $"Please answer the user's original question based on the following information.\n\nContext:\n{context}\n\nOriginal Question: {userPrompt}";
-            var synthesizerResponse = await VertexAI.AskAsync(synthesizerPrompt, _config, synthesizerModel, _config.SystemPromptDetailed, null);
-            return synthesizerResponse?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? "The AI failed to synthesize a detailed response.";
+            string finalPrompt = $"Based on the following research, answer the user's original question.\n\nResearch:\n{researchContent}\n\nOriginal Question: {userPrompt}";
+            var finalResponse = await ApiClients.CallVertexAPI(finalPrompt, _config, modelId, _config.SystemPromptHybrid, null);
+            return finalResponse.Candidates?.FirstOrDefault()?.Content?.Parts;
         }
-        
-        private async Task<string> HandleOperatorRequest(string userPrompt, TSPlayer player)
+
+        private async Task<List<Part>> HandleDeepRequest(string userPrompt, string playerName, bool extendTimeout)
+        {
+            var plannerResponse = await ApiClients.CallVertexAPI($"From {playerName}: {userPrompt}", _config, "gemini-2.5-flash", _config.SystemPromptDeepPlanner, null);
+            string researchInstructions = plannerResponse?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? userPrompt;
+            LogToFile($"[INFO] Deep research instructions generated: {researchInstructions}");
+            var taskRequest = new ExaResearchRequest { Instructions = researchInstructions };
+            var taskResponse = await ApiClients.CallExaResearchAPI_Create(taskRequest, _config);
+            var timeout = extendTimeout ? TimeSpan.FromHours(24) : TimeSpan.FromMinutes(_config.ExaResearchTimeoutMinutes);
+            var cancellationToken = new System.Threading.CancellationTokenSource(timeout).Token;
+            ExaTaskStatusResponse pollResponse;
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                pollResponse = await ApiClients.CallExaResearchAPI_Poll(taskResponse.Id, _config);
+                if (pollResponse.Status == "completed") break;
+                if (pollResponse.Status == "failed") throw new Exception("Exa research task failed.");
+                await Task.Delay(5000, cancellationToken);
+            }
+            string researchData = JsonConvert.SerializeObject(pollResponse.Data, Formatting.Indented);
+            string synthesizerPrompt = $"Please answer the user's original question based on the following structured JSON data. Write a detailed, human-readable summary.\n\nJSON Data:\n{researchData}\n\nOriginal Question: {userPrompt}";
+            var synthesizerResponse = await ApiClients.CallVertexAPI(synthesizerPrompt, _config, "gemini-2.5-pro", _config.SystemPromptDeepSynthesizer, null);
+            return synthesizerResponse.Candidates?.FirstOrDefault()?.Content?.Parts;
+        }
+
+        private async Task<List<Part>> HandleOperatorRequest(string userPrompt, TSPlayer player)
         {
             var opTools = new List<Tool>
             {
                 new Tool { FunctionDeclarations = new List<FunctionDeclaration>
-                {
-                    new FunctionDeclaration
                     {
-                        Name = "tshock_command", Description = "Executes a TShock server command.",
-                        Parameters = new ParametersInfo { Properties = new Dictionary<string, PropertyInfo> { { "command_string", new PropertyInfo { Type = "STRING", Description = "The full command string to execute, starting with a '/'." } } } }
+                        new FunctionDeclaration
+                        {
+                            Name = "exa_web_research", Description = "Performs web research using the Exa API. Provide a list of queries and a search type ('TERRARIA' or 'GENERAL').",
+                            Parameters = new ParametersInfo { Properties = new Dictionary<string, PropertyInfo>
+                            {
+                                { "queries", new PropertyInfo { Type = "ARRAY", Description = "A JSON array of 1-4 detailed search queries." } },
+                                { "search_type", new PropertyInfo { Type = "STRING", Description = "Either 'TERRARIA' or 'GENERAL'." } }
+                            }}
+                        },
+                        new FunctionDeclaration
+                        {
+                            Name = "tshock_command", Description = "Executes a TShock server command.",
+                            Parameters = new ParametersInfo { Properties = new Dictionary<string, PropertyInfo> { { "command_string", new PropertyInfo { Type = "STRING", Description = "The full command string to execute, starting with a '/'." } } } }
+                        }
                     }
-                }},
-                new Tool { GoogleSearch = new object() }
+                }
             };
+            var response = await ApiClients.CallVertexAPI($"From {player.Name}: {userPrompt}", _config, "gemini-2.5-pro", _config.SystemPromptOperator, opTools);
+            return response.Candidates?.FirstOrDefault()?.Content?.Parts;
+        }
 
-            var response = await VertexAI.AskAsync($"From {player.Name}: {userPrompt}", _config, "gemini-2.5-pro", _config.SystemPromptOperator, opTools);
-            var functionCall = response?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.FunctionCall;
-
-            if (functionCall?.Name == "tshock_command")
+        private async Task<string> ProcessAIResponseParts(List<Part> parts, TSPlayer player, string userPrompt)
+        {
+            var responseBuilder = new StringBuilder();
+            if (parts == null) return "The AI returned an empty response.";
+            foreach (var part in parts)
             {
-                string command = functionCall.Args["command_string"].ToString();
-                var aiOperator = new TSRestPlayer(AI_OPERATOR_USER, TShock.Groups.GetGroupByName(AI_OPERATOR_GROUP));
-                TShockAPI.Commands.HandleCommand(aiOperator, command);
-                string commandOutput = string.Join("\n", aiOperator.GetCommandOutput());
-                return $"Command executed: `{command}`\nOutput: {commandOutput}";
+                if (!string.IsNullOrEmpty(part.Text))
+                {
+                    responseBuilder.AppendLine(part.Text);
+                }
+                if (part.FunctionCall != null)
+                {
+                    LogToFile($"[INFO] AI requested tool: {part.FunctionCall.Name} with args: {JsonConvert.SerializeObject(part.FunctionCall.Args)}");
+                    if (part.FunctionCall.Name == "tshock_command")
+                    {
+                        string command = part.FunctionCall.Args["command_string"].ToString();
+                        var group = TShock.Groups.GetGroupByName(AI_OPERATOR_GROUP);
+                        var aiOperator = new TSRestPlayer(AI_OPERATOR_USER);
+                        bool success = TShockAPI.Commands.HandleCommand(aiOperator, command);
+                        if (success)
+                        {
+                            responseBuilder.AppendLine($"Executed: {command}");
+                        }
+                        else
+                        {
+                            responseBuilder.AppendLine($"Tried Executed: {command} but Failed");
+                        }
+                    }
+                    else if (part.FunctionCall.Name == "exa_web_research")
+                    {
+                        var queries = JsonConvert.DeserializeObject<List<string>>(part.FunctionCall.Args["queries"].ToString());
+                        var searchType = part.FunctionCall.Args["search_type"].ToString();
+                        var researchContent = new StringBuilder();
+                        foreach (var query in queries)
+                        {
+                            var searchRequest = new ExaSearchRequest { Query = query };
+                            if (searchType == "TERRARIA")
+                            {
+                                searchRequest.IncludeDomains = new List<string> { "terraria.wiki.gg", "reddit.com" };
+                            }
+                            var searchResponse = await ApiClients.CallExaSearchAPI(searchRequest, _config);
+                            foreach (var result in searchResponse.Results)
+                            {
+                                researchContent.AppendLine(result.Text);
+                            }
+                        }
+                        var opTools = new List<Tool> { new Tool { FunctionDeclarations = new List<FunctionDeclaration> { new FunctionDeclaration { Name = "tshock_command", Description = "Executes a TShock server command.", Parameters = new ParametersInfo { Properties = new Dictionary<string, PropertyInfo> { { "command_string", new PropertyInfo { Type = "STRING", Description = "The full command string to execute, starting with a '/'." } } } } } } } };
+                        var followupPrompt = $"Based on this research, what is the final command to execute for the user's request?\n\nResearch:\n{researchContent}\n\nOriginal Request: {player.Name} wants to: {userPrompt}";
+                        var followupResponse = await ApiClients.CallVertexAPI(followupPrompt, _config, "gemini-2.5-pro", _config.SystemPromptOperator, opTools);
+                        responseBuilder.Append(await ProcessAIResponseParts(followupResponse.Candidates?.FirstOrDefault()?.Content?.Parts, player, userPrompt));
+                    }
+                }
             }
-            
-            return response?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? "The AI chose not to execute a command.";
+            return responseBuilder.ToString();
         }
 
         private void BroadcastResponse(string responseText)
         {
-            var processedText = ProcessEmojis(responseText);
-            var sanitizedText = processedText.Replace("\r", "");
+            var sanitizedText = responseText.Replace("\r", "");
             string[] lines = sanitizedText.Split('\n');
-            
+            var aiTPlayer = new TSPlayer(255) { User = _aiUserAccount };
             foreach (string line in lines)
             {
                 if (string.IsNullOrWhiteSpace(line)) continue;
-                string fixedLine = FixBrokenColorTags(line);
-                TShock.Utils.Broadcast(fixedLine, Color.White);
+                if (line.StartsWith("Executed:"))
+                {
+                    TShock.Utils.Broadcast(line, TextHelper.SuccessColor);
+                }
+                else if (line.StartsWith("Tried Executed:"))
+                {
+                    TShock.Utils.Broadcast(line, TextHelper.ErrorColor);
+                }
+                else
+                {
+                    TSPlayer.All.SendMessage(line, Color.White, aiTPlayer.Index);
+                }
             }
         }
         
-        private string ProcessEmojis(string text)
-        {
-            return Regex.Replace(text, @"::([\w\s]+)::", match =>
-            {
-                return $":{match.Groups[1].Value.Replace(" ", "").ToLowerInvariant()}:";
-            });
-        }
-
-        private string FixBrokenColorTags(string line)
-        {
-            if (line.Contains("[c/") && !line.EndsWith("]"))
-            {
-                return line + "]";
-            }
-            return line;
-        }
-
         private static void LogToFile(string message)
         {
             try
