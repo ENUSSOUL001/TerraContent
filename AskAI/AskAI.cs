@@ -159,7 +159,7 @@ namespace AskAI
             int fakePlayerIndex = -1;
             for (int i = 0; i < Main.maxPlayers; i++)
             {
-                if (!TShock.Players[i].Active)
+                if (TShock.Players[i] == null || !TShock.Players[i].Active)
                 {
                     fakePlayerIndex = i;
                     break;
@@ -210,4 +210,4 @@ namespace AskAI
             }
         }
     }
-
+}
