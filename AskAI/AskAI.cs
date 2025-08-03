@@ -20,7 +20,7 @@ namespace AskAI
         public override string Author => "You";
         public override string Description => "Lets players ask questions to a powerful AI in-game.";
         public override string Name => "AskAI";
-        public override Version Version => new Version(3, 4, 0, 0);
+        public override Version Version => new Version(3, 4, 1, 0);
 
         private static AskAIConfig _config;
         private Command _askAiCommand;
