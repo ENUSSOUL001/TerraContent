@@ -17,9 +17,9 @@ namespace AskAI
             HttpClient.DefaultRequestHeaders.Add("User-Agent", "TShock-AskAI-Plugin/1.0");
         }
 
-        public static async Task<string> AskAsync(string prompt, AskAIConfig config, string apiKey)
+        public static async Task<string> AskAsync(string prompt, AskAIConfig config, string apiKey, string modelId)
         {
-            var apiUrl = $"{config.ApiUrl}{config.ModelId}:generateContent?key={apiKey}";
+            var apiUrl = $"{config.ApiUrl}{modelId}:generateContent?key={apiKey}";
 
             var requestBody = new VertexAIRequest
             {
