@@ -40,6 +40,8 @@ namespace AskAI
                 AllowServer = false
             };
             Commands.ChatCommands.Add(_askAiCommand);
+            
+            ServerApi.Hooks.NetGreetPlayer.Register(this, OnGreetPlayer);
         }
 
         protected override void Dispose(bool disposing)
@@ -47,13 +49,28 @@ namespace AskAI
             if (disposing)
             {
                 Commands.ChatCommands.Remove(_askAiCommand);
+                ServerApi.Hooks.NetGreetPlayer.Deregister(this, OnGreetPlayer);
             }
             base.Dispose(disposing);
+        }
+        
+        private void OnGreetPlayer(GreetPlayerEventArgs args)
+        {
+            var player = TShock.Players[args.Who];
+            if (player == null) return;
+
+            string header = TextHelper.Colorize("[AskAI]", TextHelper.GreetHeaderColor);
+            string command = TextHelper.Colorize("/askai <prompt>", TextHelper.UsageColor);
+            string flags = TextHelper.Colorize("[optional: -flash|-lite]", TextHelper.UsageParamColor);
+
+            player.SendMessage(header, Color.White);
+            player.SendMessage($"  {command} {flags}", Color.White);
         }
 
         private async void AskAICommand(CommandArgs args)
         {
-            if (args.Parameters.Count == 0)
+            var parameters = args.Parameters;
+            if (parameters.Count == 0)
             {
                 string usage = TextHelper.Colorize("/askai", TextHelper.UsageColor);
                 string param = TextHelper.Colorize("<your question>", TextHelper.UsageParamColor);
@@ -61,18 +78,74 @@ namespace AskAI
                 return;
             }
 
-            string userPrompt = string.Join(" ", args.Parameters);
+            string modelToUse = _config.ModelId;
+            if (parameters.Contains("-flash"))
+            {
+                modelToUse = "gemini-2.5-flash";
+                parameters.Remove("-flash");
+            }
+            else if (parameters.Contains("-lite"))
+            {
+                modelToUse = "gemini-2.5-flash-lite";
+                parameters.Remove("-lite");
+            }
+
+            if (parameters.Count == 0)
+            {
+                args.Player.SendErrorMessage("Please provide a prompt to ask the AI.");
+                return;
+            }
+
+            string userPrompt = string.Join(" ", parameters);
             string finalPrompt = $"Asked from {args.Player.Name}: {userPrompt}";
 
             TShock.Utils.Broadcast("Waiting for response...", TextHelper.InfoColor);
 
-            try
+            string aiResponse = null;
+            bool success = false;
+            
+            for (int i = 0; i < _config.ApiKeys.Count; i++)
             {
-                string apiKey = _config.ApiKeys[_currentApiKeyIndex];
-                string aiResponse = await VertexAI.AskAsync(finalPrompt, _config, apiKey);
-                
+                try
+                {
+                    string apiKey = _config.ApiKeys[_currentApiKeyIndex];
+                    aiResponse = await VertexAI.AskAsync(finalPrompt, _config, apiKey, modelToUse);
+                    success = true;
+                    LogToFile($"[SUCCESS] User: {args.Player.Name} | KeyIndex: {_currentApiKeyIndex} | Model: {modelToUse} | Prompt: {userPrompt}\n[RESPONSE] {aiResponse}\n");
+                    break;
+                }
+                catch (HttpRequestException ex)
+                {
+                    if (ex.Message.Contains("\"code\": 429") || ex.Message.Contains("RESOURCE_EXHAUSTED") || ex.Message.Contains("API key expired"))
+                    {
+                        TShock.Log.Info($"[AskAI] API key at index {_currentApiKeyIndex} failed. Trying next key...");
+                        LogToFile($"[KEY_FAILURE] User: {args.Player.Name} | KeyIndex: {_currentApiKeyIndex} | Prompt: {userPrompt}\n[ERROR] {ex.Message}\n");
+                        _currentApiKeyIndex = (_currentApiKeyIndex + 1) % _config.ApiKeys.Count;
+                        
+                        if (i < _config.ApiKeys.Count - 1) 
+                        {
+                             TShock.Utils.Broadcast("Something happened... Hold on....", TextHelper.InfoColor);
+                        }
+                        continue;
+                    }
+                    else
+                    {
+                        BroadcastError(ex);
+                        LogToFile($"[FAILURE] User: {args.Player.Name} | Prompt: {userPrompt}\n[ERROR] {ex}\n");
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    BroadcastError(ex);
+                    LogToFile($"[FAILURE] User: {args.Player.Name} | Prompt: {userPrompt}\n[ERROR] {ex}\n");
+                    return;
+                }
+            }
+
+            if (success)
+            {
                 aiResponse = TextHelper.FixMalformedColorTags(aiResponse);
-                
                 string header = $"Asked by {args.Player.Name}:";
                 TShock.Utils.Broadcast(header, TextHelper.AINameColor);
 
@@ -82,28 +155,10 @@ namespace AskAI
                     string chunk = aiResponse.Substring(i, Math.Min(terrariaChatLimit, aiResponse.Length - i));
                     TShock.Utils.Broadcast(chunk, Color.White);
                 }
-
-                LogToFile($"[SUCCESS] User: {args.Player.Name} | KeyIndex: {_currentApiKeyIndex} | Prompt: {userPrompt}\n[RESPONSE] {aiResponse}\n");
             }
-            catch (HttpRequestException ex)
+            else
             {
-                if (ex.Message.Contains("\"code\": 429") || ex.Message.Contains("RESOURCE_EXHAUSTED"))
-                {
-                    _currentApiKeyIndex = (_currentApiKeyIndex + 1) % _config.ApiKeys.Count;
-                    TShock.Log.Info($"[AskAI] API key rate limited. Switched to key index: {_currentApiKeyIndex}");
-                    args.Player.SendErrorMessage("AI is busy, please try again in a moment.", TextHelper.ErrorColor);
-                    LogToFile($"[RATE_LIMIT] User: {args.Player.Name} | Prompt: {userPrompt}\n[ERROR] {ex}\n");
-                }
-                else
-                {
-                    BroadcastError(ex);
-                    LogToFile($"[FAILURE] User: {args.Player.Name} | Prompt: {userPrompt}\n[ERROR] {ex}\n");
-                }
-            }
-            catch (Exception ex)
-            {
-                BroadcastError(ex);
-                LogToFile($"[FAILURE] User: {args.Player.Name} | Prompt: {userPrompt}\n[ERROR] {ex}\n");
+                args.Player.SendErrorMessage("AI request failed after trying all available API keys. Please check the server console for details.", TextHelper.ErrorColor);
             }
         }
         
