@@ -41,7 +41,8 @@ namespace AskAI
                 },
                 GenerationConfig = new GenerationConfig
                 {
-                    Temperature = 0.75f,
+                    Temperature = 0.2f,
+                    TopP = 0.8f,
                     MaxOutputTokens = 65536
                 }
             };
@@ -83,6 +84,8 @@ namespace AskAI
     {
         [JsonProperty("temperature")]
         public float Temperature { get; set; }
+        [JsonProperty("topP")]
+        public float TopP { get; set; }
         [JsonProperty("maxOutputTokens")]
         public int MaxOutputTokens { get; set; }
     }
