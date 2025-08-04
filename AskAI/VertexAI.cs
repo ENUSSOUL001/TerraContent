@@ -17,7 +17,7 @@ namespace AskAI
             HttpClient.DefaultRequestHeaders.Add("User-Agent", "TShock-AskAI-Plugin/1.0");
         }
 
-        public static async Task<string> AskAsync(string prompt, AskAIConfig config, string apiKey, string modelId)
+        public static async Task<(string, string, string)> AskAsync(string prompt, AskAIConfig config, string apiKey, string modelId)
         {
             var apiUrl = $"{config.ApiUrl}{modelId}:generateContent?key={apiKey}";
 
@@ -38,6 +38,11 @@ namespace AskAI
                 Tools = new List<Tool>
                 {
                     new Tool { GoogleSearch = new object() }
+                },
+                GenerationConfig = new GenerationConfig
+                {
+                    Temperature = 0.75f,
+                    MaxOutputTokens = 65536
                 }
             };
 
@@ -46,19 +51,19 @@ namespace AskAI
 
             var response = await HttpClient.PostAsync(apiUrl, httpContent);
 
+            var responseJson = await response.Content.ReadAsStringAsync();
+
             if (!response.IsSuccessStatusCode)
             {
-                var errorBody = await response.Content.ReadAsStringAsync();
-                throw new HttpRequestException($"API request failed with status code {response.StatusCode}: {errorBody}");
+                throw new HttpRequestException($"API request failed with status code {response.StatusCode}: {responseJson}");
             }
 
-            var responseJson = await response.Content.ReadAsStringAsync();
             var vertexResponse = JsonConvert.DeserializeObject<VertexAIResponse>(responseJson);
 
             var firstCandidate = vertexResponse?.Candidates?.FirstOrDefault();
             var firstPart = firstCandidate?.Content?.Parts?.FirstOrDefault();
 
-            return firstPart?.Text ?? "AI response was empty or malformed.";
+            return (firstPart?.Text ?? "AI response was empty or malformed.", jsonContent, responseJson);
         }
     }
 
@@ -70,6 +75,16 @@ namespace AskAI
         public List<Content> Contents { get; set; }
         [JsonProperty("tools")]
         public List<Tool> Tools { get; set; }
+        [JsonProperty("generationConfig")]
+        public GenerationConfig GenerationConfig { get; set; }
+    }
+    
+    public class GenerationConfig
+    {
+        [JsonProperty("temperature")]
+        public float Temperature { get; set; }
+        [JsonProperty("maxOutputTokens")]
+        public int MaxOutputTokens { get; set; }
     }
 
     public class VertexAIResponse
