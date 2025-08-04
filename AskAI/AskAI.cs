@@ -21,17 +21,16 @@ namespace AskAI
         private static AskAIConfig _config;
         private Command _askAiCommand;
         private static int _currentApiKeyIndex = 0;
-        private static string _logFilePath;
+        private static string _logDirectory;
 
         public AskAI(Main game) : base(game) { }
 
         public override void Initialize()
         {
-            string configDirectory = Path.Combine(TShock.SavePath, "AskAI");
-            Directory.CreateDirectory(configDirectory);
-            _logFilePath = Path.Combine(configDirectory, "live.log");
+            _logDirectory = Path.Combine(TShock.SavePath, "AskAI", "Logs");
+            Directory.CreateDirectory(_logDirectory);
 
-            string configPath = Path.Combine(configDirectory, "config.json");
+            string configPath = Path.Combine(TShock.SavePath, "AskAI", "config.json");
             _config = AskAIConfig.Read(configPath);
             
             _askAiCommand = new Command("", AskAICommand, "askai")
@@ -103,22 +102,23 @@ namespace AskAI
 
             string aiResponse = null;
             bool success = false;
+            string rawRequestBody = "";
+            string rawResponseBody = "";
             
             for (int i = 0; i < _config.ApiKeys.Count; i++)
             {
                 try
                 {
                     string apiKey = _config.ApiKeys[_currentApiKeyIndex];
-                    aiResponse = await VertexAI.AskAsync(finalPrompt, _config, apiKey, modelToUse);
+                    (aiResponse, rawRequestBody, rawResponseBody) = await VertexAI.AskAsync(finalPrompt, _config, apiKey, modelToUse);
                     success = true;
-                    LogToFile($"[SUCCESS] User: {args.Player.Name} | KeyIndex: {_currentApiKeyIndex} | Model: {modelToUse} | Prompt: {userPrompt}\n[RESPONSE] {aiResponse}\n");
+                    LogToFile($"[SUCCESS]\nUser: {args.Player.Name}\nKeyIndex: {_currentApiKeyIndex}\nModel: {modelToUse}\nPrompt: {userPrompt}\n--- REQUEST BODY ---\n{rawRequestBody}\n--- RAW RESPONSE ---\n{rawResponseBody}\n--- PARSED RESPONSE ---\n{aiResponse}\n");
                     break;
                 }
                 catch (HttpRequestException ex)
                 {
                     if (ex.Message.Contains("\"code\": 429") || ex.Message.Contains("RESOURCE_EXHAUSTED") || ex.Message.Contains("API key expired"))
                     {
-                        TShock.Log.Info($"[AskAI] API key at index {_currentApiKeyIndex} failed. Trying next key...");
                         LogToFile($"[KEY_FAILURE] User: {args.Player.Name} | KeyIndex: {_currentApiKeyIndex} | Prompt: {userPrompt}\n[ERROR] {ex.Message}\n");
                         _currentApiKeyIndex = (_currentApiKeyIndex + 1) % _config.ApiKeys.Count;
                         
@@ -145,7 +145,8 @@ namespace AskAI
 
             if (success)
             {
-                aiResponse = TextHelper.FixMalformedColorTags(aiResponse);
+                aiResponse = TextHelper.ConvertAiColorTags(aiResponse);
+                
                 string header = $"Asked by {args.Player.Name}:";
                 TShock.Utils.Broadcast(header, TextHelper.AINameColor);
 
@@ -178,11 +179,12 @@ namespace AskAI
         {
             try
             {
-                File.AppendAllText(_logFilePath, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}");
+                string logFilePath = Path.Combine(_logDirectory, $"live_{DateTime.UtcNow:yyyy-MM-dd}.log");
+                File.AppendAllText(logFilePath, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}");
             }
             catch (Exception ex)
             {
-                TShock.Log.Error($"[AskAI] Failed to write to live.log: {ex.Message}");
+                TShock.Log.Error($"[AskAI] Failed to write to log: {ex.Message}");
             }
         }
     }
