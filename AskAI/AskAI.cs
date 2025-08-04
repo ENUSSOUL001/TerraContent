@@ -112,7 +112,7 @@ namespace AskAI
                     string apiKey = _config.ApiKeys[_currentApiKeyIndex];
                     (aiResponse, rawRequestBody, rawResponseBody) = await VertexAI.AskAsync(finalPrompt, _config, apiKey, modelToUse);
                     success = true;
-                    LogToFile($"[SUCCESS]\nUser: {args.Player.Name}\nKeyIndex: {_currentApiKeyIndex}\nModel: {modelToUse}\nPrompt: {userPrompt}\n--- REQUEST BODY ---\n{rawRequestBody}\n--- RAW RESPONSE ---\n{rawResponseBody}\n--- PARSED RESPONSE ---\n{aiResponse}\n");
+                    LogRequest(args.Player.Name, _currentApiKeyIndex, modelToUse, userPrompt, rawRequestBody, rawResponseBody, aiResponse);
                     break;
                 }
                 catch (HttpRequestException ex)
@@ -175,12 +175,36 @@ namespace AskAI
             }
         }
         
+        private void LogRequest(string userName, int keyIndex, string model, string prompt, string requestBody, string rawResponse, string parsedResponse)
+        {
+            var logMessage = new System.Text.StringBuilder();
+            logMessage.AppendLine($"[SUCCESS] User: {userName} | KeyIndex: {keyIndex} | Model: {model} | Prompt: {prompt}");
+
+            if (_config.LogSettings.LogApiRequests)
+            {
+                logMessage.AppendLine("--- REQUEST BODY ---");
+                logMessage.AppendLine(requestBody);
+            }
+            if (_config.LogSettings.LogApiRawResponses)
+            {
+                logMessage.AppendLine("--- RAW RESPONSE ---");
+                logMessage.AppendLine(rawResponse);
+            }
+            if (_config.LogSettings.LogParsedResponses)
+            {
+                logMessage.AppendLine("--- PARSED RESPONSE ---");
+                logMessage.AppendLine(parsedResponse);
+            }
+            
+            LogToFile(logMessage.ToString());
+        }
+
         private static void LogToFile(string message)
         {
             try
             {
-                string logFilePath = Path.Combine(_logDirectory, $"live_{DateTime.UtcNow:yyyy-MM-dd}.log");
-                File.AppendAllText(logFilePath, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}");
+                string logFilePath = Path.Combine(_logDirectory, $"live_{DateTime.UtcNow:yyyy-MM-dd}.txt");
+                File.AppendAllText(logFilePath, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]\n{message}\n");
             }
             catch (Exception ex)
             {
