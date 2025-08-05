@@ -86,8 +86,23 @@ namespace AskAI
             
             if (success)
             {
-                string processedResponse = TextHelper.ConvertAiColorTags(initialAiResponse);
-                LogRequest(args.Player.Name, _currentApiKeyIndex, modelToUse, userPrompt, rawRequestBody, rawResponseBody, initialAiResponse, processedResponse, true);
+                string finalResponse = initialAiResponse;
+                if (_config.SmarterConvert)
+                {
+                    args.Player.SendInfoMessage("AI is refining the response...");
+                    try
+                    {
+                        string apiKey = _config.ApiKeys[_currentApiKeyIndex]; 
+                        finalResponse = await VertexAI.CleanUpResponseAsync(initialAiResponse, _config, apiKey);
+                    }
+                    catch (Exception ex)
+                    {
+                        TShock.Log.Warn($"[AskAI] SmarterConvert cleanup step failed. Using original response. Error: {ex.Message}");
+                    }
+                }
+
+                string processedResponse = TextHelper.ConvertAiColorTags(finalResponse);
+                LogRequest(args.Player.Name, _currentApiKeyIndex, modelToUse, userPrompt, rawRequestBody, rawResponseBody, finalResponse, processedResponse, true);
                 BroadcastResponse(args.Player, userPrompt, processedResponse);
             }
             else
