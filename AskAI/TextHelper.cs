@@ -28,27 +28,60 @@ namespace AskAI
                 return string.Empty;
             }
 
-            var result = new StringBuilder(inputText.Length + 50);
+            var result = new StringBuilder(inputText.Length + 100);
             var colorStack = new Stack<string>();
             var span = inputText.AsSpan();
 
             for (int i = 0; i < span.Length; i++)
             {
                 char currentChar = span[i];
-                
-                if (currentChar == '<' && i + 8 < span.Length && span[i + 7] == ':')
+
+                if (currentChar == '<')
                 {
-                    var colorSlice = span.Slice(i + 1, 6);
-                    if (IsHexString(colorSlice))
+                    if (i + 1 < span.Length && span[i + 1] == '#')
                     {
-                        string color = colorSlice.ToString();
-                        colorStack.Push(color);
-                        result.Append($"[c/{color}:");
-                        i += 7;
-                        continue;
+                        if (i + 2 < span.Length && span[i + 2] == '/')
+                        {
+                            if (i + 3 < span.Length && span[i + 3] == '>')
+                            {
+                                if (colorStack.Count > 0)
+                                {
+                                    colorStack.Pop();
+                                    result.Append(']');
+                                }
+                                i += 3;
+                                continue;
+                            }
+                        }
+                        
+                        if (i + 8 < span.Length && span[i + 8] == '>')
+                        {
+                            var colorSlice = span.Slice(i + 2, 6);
+                            if (IsHexString(colorSlice))
+                            {
+                                string color = colorSlice.ToString();
+                                colorStack.Push(color);
+                                result.Append($"[c/{color}:");
+                                i += 8;
+                                continue;
+                            }
+                        }
+                    }
+                    
+                    if (i + 8 < span.Length && span[i + 7] == ':')
+                    {
+                        var colorSlice = span.Slice(i + 1, 6);
+                        if (IsHexString(colorSlice))
+                        {
+                            string color = colorSlice.ToString();
+                            colorStack.Push(color);
+                            result.Append($"[c/{color}:");
+                            i += 7;
+                            continue;
+                        }
                     }
                 }
-                
+
                 if (currentChar == '>')
                 {
                     if (colorStack.Count > 0)
