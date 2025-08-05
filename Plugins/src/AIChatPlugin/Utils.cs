@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using TShockAPI;
 using static AIChatPlugin.Configuration;
+using TShock.Localization;
 
 namespace AIChatPlugin;
 internal class Utils
