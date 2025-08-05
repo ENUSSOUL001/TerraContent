@@ -15,8 +15,8 @@ namespace AskAI
     [ApiVersion(2, 1)]
     public class AskAI : TerrariaPlugin
     {
-        public override string Author => "You";
-        public override string Description => "Lets players ask questions to a powerful AI in-game.";
+        public override string Author => "enussoul";
+        public override string Description => "Ask AI within the Game!";
         public override string Name => "AskAI";
         public override Version Version => new Version(1, 0, 0, 0);
 
