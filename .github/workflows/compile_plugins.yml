@@ -1,13 +1,13 @@
-name: Compile and Commit Plugins
+name: Compile and Commit TShock Plugins
 
 on:
   workflow_dispatch:
     inputs:
-      source_paths:
-        description: 'Space-separated paths to search for .csproj files. Searches recursively. Defaults to root.'
+      plugin_source_paths:
+        description: 'Space-separated list of directories to search recursively for plugins. Defaults to the "Plugins" folder.'
         required: true
         type: string
-        default: '.'
+        default: 'Plugins'
       output_directory:
         description: 'Directory to place the final compiled plugins.'
         required: true
@@ -42,50 +42,49 @@ jobs:
 
       - name: Discover, Compile, and Collect Plugins
         run: |
+          # This flag will be used to fail the job if any single plugin fails to build.
           had_errors=false
           
-          # Find all .csproj files recursively from the source paths provided.
-          # Then, loop through each found project file.
-          find ${{ github.event.inputs.source_paths }} -type f -name "*.csproj" | while read -r csproj_file; do
+          # This is the core logic. It uses the `find` command to search for all files
+          # ending in .csproj within the paths you provide. It then loops through each one.
+          find ${{ github.event.inputs.plugin_source_paths }} -type f -name "*.csproj" | while read -r csproj_file; do
             if [ -z "$csproj_file" ]; then continue; fi
             
             project_dir=$(dirname "$csproj_file")
             echo "--- Processing project: $csproj_file ---"
             
             echo "Building project..."
-            # Build the project. If it fails, print an error and continue to the next one.
+            # Build the specific project. If it fails, print an error and continue to the next one.
             if ! dotnet build "$csproj_file" --configuration Release -p:PlatformTarget=x64; then
               echo "❌ Error: Build failed for '$csproj_file'."
               had_errors=true
               continue
             fi
             
-            # --- Path detection logic for compiled files ---
+            # --- Path detection for finding the compiled DLL ---
             build_config="Release"
             target_framework="net6.0"
             
-            # First, check for a custom TShock <OutputPath> like /bin/Release/ServerPlugins
-            output_source_path="$project_dir/bin/$build_config/ServerPlugins"
+            # Standard .NET build output path
+            output_source_path="$project_dir/bin/$build_config/$target_framework"
             
-            # If that doesn't exist, fall back to the standard .NET output path
-            if [ ! -d "$output_source_path" ]; then
-              output_source_path="$project_dir/bin/$build_config/$target_framework"
-            fi
+            # Some older TShock projects might have a custom output path.
+            # We check for the standard one first, but you could add more checks here if needed.
             
             if [ -d "$output_source_path" ]; then
               echo "Collecting files from: $output_source_path"
-              # Copy all compiled files (.dll, .pdb, etc.) to our final output directory
+              # Copy all compiled files (.dll, .pdb, etc.) to the final output directory.
               cp -r "$output_source_path"/* "${{ github.event.inputs.output_directory }}/"
             else
-              echo "❌ Error: Could not find compiled output in standard paths for '$csproj_file'."
+              echo "❌ Error: Could not find compiled output in standard path for '$csproj_file'."
               had_errors=true
               continue
             fi
           done
 
-          # After trying to build all projects, fail the step if any of them had an error.
+          # After trying to build all projects, fail the entire step if any of them had an error.
           if [ "$had_errors" = true ]; then
-            echo "One or more plugins failed to compile. See logs above."
+            echo "One or more plugins failed to compile. See logs above for details."
             exit 1
           fi
 
@@ -101,5 +100,5 @@ jobs:
             git commit -m "${{ github.event.inputs.commit_message }}"
             git push
           else
-            echo "No changes detected, nothing to commit."
+            echo "No changes to commit."
           fi
