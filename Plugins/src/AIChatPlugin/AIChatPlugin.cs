@@ -6,13 +6,11 @@ using System.Reflection;
 using static AIChatPlugin.Configuration;
 using static AIChatPlugin.Utils;
 
+
 namespace AIChatPlugin;
 [ApiVersion(2, 1)]
 public class AIChatPlugin : TerrariaPlugin
 {
-    // This static instance is the key to the solution.
-    public static AIChatPlugin Instance { get; private set; }
-
     #region 插件信息
     public override Version Version => new Version(2025, 05, 18);
     public override string Name => "AIChatPlugin";
@@ -22,8 +20,6 @@ public class AIChatPlugin : TerrariaPlugin
     #region 插件启动
     public override void Initialize()
     {
-        Instance = this; // Assign the instance when the plugin loads.
-
         LoadConfig();
         Commands.ChatCommands.Add(new Command(this.ChatWithAICommand, "ab"));
         Commands.ChatCommands.Add(new Command("aiclear", AIclear, "aiclear"));
@@ -34,8 +30,7 @@ public class AIChatPlugin : TerrariaPlugin
     }
     public AIChatPlugin(Main game) : base(game)
     {
-        // Ensure the instance is set early.
-        Instance = this;
+        base.Order = 1;
     }
     #endregion
     #region 插件卸载
