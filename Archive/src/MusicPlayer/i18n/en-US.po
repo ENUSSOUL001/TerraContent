@@ -1,0 +1,76 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: tshock-chinese-plugin\n"
+"POT-Creation-Date: 2025-01-29 16:02:59+0000\n"
+"PO-Revision-Date: 2025-03-19 01:13\n"
+"Last-Translator: \n"
+"Language-Team: English\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: GetText.NET Extractor\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Crowdin-Project: tshock-chinese-plugin\n"
+"X-Crowdin-Project-ID: 751499\n"
+"X-Crowdin-Language: en\n"
+"X-Crowdin-File: /master/src/MusicPlayer/i18n/template.pot\n"
+"X-Crowdin-File-ID: 1480\n"
+"Language: en_US\n"
+
+#: ../../MusicPlayer.cs:14
+msgid "一个简单的音乐播放插件."
+msgstr "A simple music player plugin."
+
+#: ../../MusicPlayer.cs:111
+msgid "使用 /song 来停止播放."
+msgstr "Use /song to stop playing."
+
+#: ../../MusicPlayer.cs:142
+#: ../../MusicPlayer.cs:176
+msgid "加载歌曲失败: '{0}'"
+msgstr "Failed to load song: '{0}'"
+
+#: ../../MusicPlayer.cs:118
+#: ../../MusicPlayer.cs:187
+msgid "已经为你停止播放"
+msgstr "You have stopped playing"
+
+#: ../../MusicPlayer.cs:190
+msgid "已经为所有玩家停止播放"
+msgstr "Has stopped playing for all players"
+
+#: ../../MusicPlayer.cs:110
+msgid "方式: /song <歌曲名称> [演奏乐器]\n"
+"演奏乐器: harp, theaxe, bell，默认为 harp"
+msgstr "Usage: /song <song name> [instrument]\n"
+"Instruments: harp, theaxe, bell (default to harp)"
+
+#: ../../MusicPlayer.cs:214
+msgid "本服务器有以下歌曲:\n"
+msgstr "The server has the following songs:\n"
+
+#: ../../MusicPlayer.cs:138
+msgid "正在播放: {0}"
+msgstr "Playing: {0}"
+
+#: ../../MusicPlayer.cs:169
+msgid "正在给您播放: {0}，使用/song停止播放"
+msgstr "Playing for you: {0}, use /song to stop playing"
+
+#: ../../MusicPlayer.cs:102
+msgid "此命令要求在游戏内使用"
+msgstr "This command requires in-game usage"
+
+#: ../../MusicPlayer.cs:209
+msgid "没有任何歌曲: {0}"
+msgstr "No songs in directory: {0}"
+
+#: ../../MusicPlayer.cs:200
+msgid "目录不存在: {0}"
+msgstr "Directory does not exist: {0}"
+
+#: ../../NoteName.cs:15
+#, csharp-format
+msgid "给与的名称不是一个音符. 数值: [{0}]"
+msgstr "The given name is not a valid note. value: [{0}]"
+
