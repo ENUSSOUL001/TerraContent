@@ -3,11 +3,11 @@ name: Compile and Commit Plugins
 on:
   workflow_dispatch:
     inputs:
-      plugin_folders:
-        description: 'Space-separated paths to plugin source directories.'
+      source_paths:
+        description: 'Space-separated paths to search for .csproj files. Searches recursively. Defaults to root.'
         required: true
         type: string
-        default: 'Replenisher-main/Replenisher/ EssentialsPlus-Anz-Changes/EssentialsPlus/'
+        default: '.'
       output_directory:
         description: 'Directory to place the final compiled plugins.'
         required: true
@@ -40,47 +40,54 @@ jobs:
           rm -rf ${{ github.event.inputs.output_directory }}
           mkdir -p ${{ github.event.inputs.output_directory }}
 
-      - name: Compile Plugins and Collect Output
+      - name: Discover, Compile, and Collect Plugins
         run: |
-          for folder in ${{ github.event.inputs.plugin_folders }}; do
-            if [ -z "$folder" ]; then continue; fi
-
-            echo "--- Processing folder: $folder ---"
-            if [ ! -d "$folder" ]; then
-              echo "⚠️ Warning: Folder '$folder' not found. Skipping."
+          had_errors=false
+          
+          # Find all .csproj files recursively from the source paths provided.
+          # Then, loop through each found project file.
+          find ${{ github.event.inputs.source_paths }} -type f -name "*.csproj" | while read -r csproj_file; do
+            if [ -z "$csproj_file" ]; then continue; fi
+            
+            project_dir=$(dirname "$csproj_file")
+            echo "--- Processing project: $csproj_file ---"
+            
+            echo "Building project..."
+            # Build the project. If it fails, print an error and continue to the next one.
+            if ! dotnet build "$csproj_file" --configuration Release -p:PlatformTarget=x64; then
+              echo "❌ Error: Build failed for '$csproj_file'."
+              had_errors=true
               continue
             fi
             
-            csproj_file=$(find "$folder" -maxdepth 1 -type f -name "*.csproj" -print -quit)
-            
-            if [ -z "$csproj_file" ]; then
-              echo "❌ Error: No .csproj file found directly in '$folder'. Skipping."
-              continue
-            fi
-            
-            echo "Building project: $csproj_file"
-            # Added -p:PlatformTarget=x64 to resolve architecture mismatch warnings (MSB3270)
-            dotnet build "$csproj_file" --configuration Release -p:PlatformTarget=x64
-            
-            # This is the corrected path detection logic
+            # --- Path detection logic for compiled files ---
             build_config="Release"
-            target_framework="net6.0" # Based on the project files
-            # First, check for the custom <OutputPath>
-            output_source_path="$(dirname "$csproj_file")/bin/$build_config/ServerPlugins"
-            # If that doesn't exist, fall back to the default path
+            target_framework="net6.0"
+            
+            # First, check for a custom TShock <OutputPath> like /bin/Release/ServerPlugins
+            output_source_path="$project_dir/bin/$build_config/ServerPlugins"
+            
+            # If that doesn't exist, fall back to the standard .NET output path
             if [ ! -d "$output_source_path" ]; then
-              output_source_path="$(dirname "$csproj_file")/bin/$build_config/$target_framework"
+              output_source_path="$project_dir/bin/$build_config/$target_framework"
             fi
             
             if [ -d "$output_source_path" ]; then
               echo "Collecting files from: $output_source_path"
-              # Copy all files from the plugin's output to our final directory
+              # Copy all compiled files (.dll, .pdb, etc.) to our final output directory
               cp -r "$output_source_path"/* "${{ github.event.inputs.output_directory }}/"
             else
-              echo "❌ Error: Could not find compiled output in standard paths for '$folder'."
-              exit 1
+              echo "❌ Error: Could not find compiled output in standard paths for '$csproj_file'."
+              had_errors=true
+              continue
             fi
           done
+
+          # After trying to build all projects, fail the step if any of them had an error.
+          if [ "$had_errors" = true ]; then
+            echo "One or more plugins failed to compile. See logs above."
+            exit 1
+          fi
 
       - name: Commit and Push Compiled Files
         run: |
