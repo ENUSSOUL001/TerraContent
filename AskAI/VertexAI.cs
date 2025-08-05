@@ -41,8 +41,8 @@ namespace AskAI
                 },
                 GenerationConfig = new GenerationConfig
                 {
-                    Temperature = 0.2f,
-                    TopP = 0.8f,
+                    Temperature = 0.3f,
+                    TopP = 0.75f,
                     MaxOutputTokens = 65536
                 }
             };
