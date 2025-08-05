@@ -1,8 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
-        <!--
-        This project now correctly defines its own TargetFramework.
-        -->
         <TargetFramework>net6.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
@@ -11,9 +8,6 @@
     </PropertyGroup>
 
     <PropertyGroup>
-        <!--
-        This custom output path is preserved from your template.
-        -->
         <OutputPath>..\..\out\$(Configuration)</OutputPath>
         <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
         <GenerateAssemblyInformationalVersionAttribute>false</GenerateAssemblyInformationalVersionAttribute>
@@ -22,27 +16,17 @@
 
     <ItemGroup>
         <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-6qmf-mmc7-6c2p"/>
-        <!--
-        This correctly references the official TShock 5.2.4 package.
-        -->
         <PackageReference Include="TShock" Version="5.2.4">
             <IncludeAssets>compile</IncludeAssets>
         </PackageReference>
     </ItemGroup>
 
     <ItemGroup>
-        <!--
-        This is specific to AIChatPlugin and correctly includes the language files.
-        The dangerous ..\Shared compile has been removed to prevent errors.
-        -->
         <EmbeddedResource Include=".\i18n\*.po">
             <LogicalName>i18n.%(FileName).%(Extension)</LogicalName>
         </EmbeddedResource>
     </ItemGroup>
     
-    <!--
-    All custom build targets from your template are preserved below.
-    -->
     <Target Name="EmbedNuGetDlls" AfterTargets="ResolveReferences">
         <ItemGroup>
             <EmbedNuGetDllsList Include="$(EmbedNuGetDlls.Split(';'))" />
@@ -77,7 +61,7 @@
 	</Target>
 
     <Target Name="githash" BeforeTargets="PreBuildEvent">
-        <Exec Command="git log -1 --pretty="format:%25H"" StandardOutputImportance="low" StandardErrorImportance="low" ContinueOnError="true" ConsoleToMSBuild="true">
+        <Exec Command="git log -1 --pretty='format:%25H'" StandardOutputImportance="low" StandardErrorImportance="low" ContinueOnError="true" ConsoleToMSBuild="true">
             <Output TaskParameter="ConsoleOutput" PropertyName="CommitHashValue"/>
         </Exec>
 
