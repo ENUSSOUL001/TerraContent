@@ -5,8 +5,7 @@ using TShockAPI.Hooks;
 using System.Reflection;
 using static AIChatPlugin.Configuration;
 using static AIChatPlugin.Utils;
-using TShock.Localization;
-
+using TShockAPI.Localization; // Corrected using statement
 
 namespace AIChatPlugin;
 [ApiVersion(2, 1)]
@@ -15,7 +14,7 @@ public class AIChatPlugin : TerrariaPlugin
     #region 插件信息
     public override Version Version => new Version(2025, 05, 18);
     public override string Name => "AIChatPlugin";
-    public override string Description => GetString("一个提供AI对话的插件");
+    public override string Description => TShockAPI.Localization.GetString("一个提供AI对话的插件");
     public override string Author => "JTL";
     #endregion
     #region 插件启动
@@ -48,7 +47,7 @@ public class AIChatPlugin : TerrariaPlugin
     #region 帮助信息
     private void BotHelp(CommandArgs args)
     {
-        var helpMessage = GetString("  [i:1344]AIChatPlugin帮助信息[i:1344]\n" +
+        var helpMessage = TShockAPI.Localization.GetString("  [i:1344]AIChatPlugin帮助信息[i:1344]\n" +
                                     "[i:1344]/ab                   - 向AI提问\n" +
                                     "[i:1344]/bcz                  - 清除您的上下文\n" +
                                     "[i:1344]/bbz                  - 显示此帮助信息\n" +
@@ -67,7 +66,7 @@ public class AIChatPlugin : TerrariaPlugin
     {
         if (args.Parameters.Count == 0)
         {
-            args.Player.SendErrorMessage(GetString("[i:1344]请输入您想询问的内容！[i:1344]"));
+            args.Player.SendErrorMessage(TShockAPI.Localization.GetString("[i:1344]请输入您想询问的内容！[i:1344]"));
             return;
         }
         var question = string.Join(" ", args.Parameters);
@@ -88,11 +87,11 @@ public class AIChatPlugin : TerrariaPlugin
         if (playerContexts.ContainsKey(args.Player.Index))
         {
             playerContexts.Remove(args.Player.Index);
-            args.Player.SendSuccessMessage(GetString("[i:1344]您的上下文记录已重置！[i:1344]"));
+            args.Player.SendSuccessMessage(TShockAPI.Localization.GetString("[i:1344]您的上下文记录已重置！[i:1344]"));
         }
         else
         {
-            args.Player.SendErrorMessage(GetString("[i:1344]您当前没有上下文记录！[i:1344]"));
+            args.Player.SendErrorMessage(TShockAPI.Localization.GetString("[i:1344]您当前没有上下文记录！[i:1344]"));
         }
     }
     #endregion
