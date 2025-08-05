@@ -1,4 +1,6 @@
 using Microsoft.Xna.Framework;
+using System.Collections.Generic;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace AskAI
@@ -18,16 +20,67 @@ namespace AskAI
             return $"[c/{color.R:X2}{color.G:X2}{color.B:X2}:{text}]";
         }
 
-        private static readonly Regex AICodeRegex = new Regex(@"<(?<color>[0-9A-Fa-f]{6}):(?<text>.*?)>", RegexOptions.Singleline);
         public static string ConvertAiColorTags(string text)
         {
-            return AICodeRegex.Replace(text, match =>
+            var result = new StringBuilder();
+            var colorStack = new Stack<string>();
+            int i = 0;
+
+            while (i < text.Length)
             {
-                var color = match.Groups["color"].Value;
-                var content = match.Groups["text"].Value;
-                var nestedContent = ConvertAiColorTags(content);
-                return $"[c/{color}:{nestedContent}]";
-            });
+                if (text[i] == '<' && i + 8 < text.Length && text[i + 7] == ':')
+                {
+                    string color = text.Substring(i + 1, 6);
+                    if (Regex.IsMatch(color, @"^[0-9A-Fa-f]{6}$"))
+                    {
+                        colorStack.Push(color);
+                        result.Append($"[c/{color}:");
+                        i += 8;
+                        continue;
+                    }
+                }
+
+                if (text[i] == '>')
+                {
+                    if (colorStack.Count > 0)
+                    {
+                        colorStack.Pop();
+                        result.Append("]");
+                        if (colorStack.Count > 0)
+                        {
+                            result.Append($"[c/{colorStack.Peek()}:");
+                        }
+                        i++;
+                        continue;
+                    }
+                }
+
+                if (text[i] == '\n')
+                {
+                    foreach (var color in colorStack)
+                    {
+                        result.Append("]");
+                    }
+                    result.Append('\n');
+                    foreach (var color in new Stack<string>(colorStack))
+                    {
+                        result.Append($"[c/{color}:");
+                    }
+                    i++;
+                    continue;
+                }
+
+                result.Append(text[i]);
+                i++;
+            }
+
+            while (colorStack.Count > 0)
+            {
+                result.Append("]");
+                colorStack.Pop();
+            }
+
+            return result.ToString();
         }
     }
 }
