@@ -1,7 +1,5 @@
 using Newtonsoft.Json;
 using TShockAPI;
-using System.IO;
-using System;
 
 namespace AIChatPlugin;
 public class Configuration
@@ -41,11 +39,9 @@ public class Configuration
             }
             catch (Exception ex)
             {
-                string format = AIChatPlugin.Instance.GetString("[AIChatPlugin] 加载配置时发生错误：{0}");
-                string message = string.Format(format, ex.Message);
-                TShock.Log.ConsoleError(message);
+                TShock.Log.ConsoleError(GetString($"[AIChatPlugin] 加载配置时发生错误：{ex.Message}"));
             }
         }
     }
     #endregion
-    }
+}
