@@ -1,6 +1,9 @@
 <Project>
     <PropertyGroup>
-        <TargetFramework>net9.0</TargetFramework>
+        <!--
+        FIXED: Changed from net9.0 to net6.0 to match TShock 5.2.4
+        -->
+        <TargetFramework>net6.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
 		<LangVersion>latest</LangVersion>
@@ -16,7 +19,10 @@
 
     <ItemGroup>
         <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-6qmf-mmc7-6c2p"/>
-        <PackageReference Include="UnrealMultiple.TShock-Beta" Version="6.0.0">
+        <!--
+        FIXED: Replaced the incorrect beta package with the official TShock 5.2.4 package.
+        -->
+        <PackageReference Include="TShock" Version="5.2.4">
             <IncludeAssets>compile</IncludeAssets>
         </PackageReference>
     </ItemGroup>
@@ -62,7 +68,7 @@
 	</Target>
 
     <Target Name="githash" BeforeTargets="PreBuildEvent">
-        <Exec Command="git log -1 --pretty=&quot;format:%25H&quot;" StandardOutputImportance="low" StandardErrorImportance="low" ContinueOnError="true" ConsoleToMSBuild="true">
+        <Exec Command="git log -1 --pretty="format:%25H"" StandardOutputImportance="low" StandardErrorImportance="low" ContinueOnError="true" ConsoleToMSBuild="true">
             <Output TaskParameter="ConsoleOutput" PropertyName="CommitHashValue"/>
         </Exec>
 
