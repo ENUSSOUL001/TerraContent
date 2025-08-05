@@ -55,11 +55,6 @@ namespace AskAI
                     {
                         colorStack.Pop();
                         result.Append(']');
-
-                        if (colorStack.Count > 0)
-                        {
-                            result.Append($"[c/{colorStack.Peek()}:");
-                        }
                         continue;
                     }
                 }
