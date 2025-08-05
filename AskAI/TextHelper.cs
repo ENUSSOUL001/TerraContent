@@ -16,6 +16,18 @@ namespace AskAI
         public static readonly Color GreetColor = new Color(0, 255, 150);
         public static readonly Color GreetHeaderColor = new Color(150, 255, 200);
 
+        private enum TagType { Colon, Hash }
+        private struct TagInfo
+        {
+            public readonly string Color;
+            public readonly TagType Type;
+            public TagInfo(string color, TagType type)
+            {
+                Color = color;
+                Type = type;
+            }
+        }
+
         public static string Colorize(string text, Color color)
         {
             return $"[c/{color.R:X2}{color.G:X2}{color.B:X2}:{text}]";
@@ -29,7 +41,7 @@ namespace AskAI
             }
 
             var result = new StringBuilder(inputText.Length + 100);
-            var colorStack = new Stack<string>();
+            var tagStack = new Stack<TagInfo>();
             var span = inputText.AsSpan();
 
             for (int i = 0; i < span.Length; i++)
@@ -38,55 +50,45 @@ namespace AskAI
 
                 if (currentChar == '<')
                 {
-                    if (i + 1 < span.Length && span[i + 1] == '#')
-                    {
-                        if (i + 2 < span.Length && span[i + 2] == '/')
-                        {
-                            if (i + 3 < span.Length && span[i + 3] == '>')
-                            {
-                                if (colorStack.Count > 0)
-                                {
-                                    colorStack.Pop();
-                                    result.Append(']');
-                                }
-                                i += 3;
-                                continue;
-                            }
-                        }
-                        
-                        if (i + 8 < span.Length && span[i + 8] == '>')
-                        {
-                            var colorSlice = span.Slice(i + 2, 6);
-                            if (IsHexString(colorSlice))
-                            {
-                                string color = colorSlice.ToString();
-                                colorStack.Push(color);
-                                result.Append($"[c/{color}:");
-                                i += 8;
-                                continue;
-                            }
-                        }
-                    }
-                    
                     if (i + 8 < span.Length && span[i + 7] == ':')
                     {
                         var colorSlice = span.Slice(i + 1, 6);
                         if (IsHexString(colorSlice))
                         {
-                            string color = colorSlice.ToString();
-                            colorStack.Push(color);
-                            result.Append($"[c/{color}:");
+                            tagStack.Push(new TagInfo(colorSlice.ToString(), TagType.Colon));
+                            result.Append($"[c/{colorSlice.ToString()}:");
                             i += 7;
                             continue;
                         }
+                    }
+                    else if (i + 8 < span.Length && span[i + 1] == '#' && span[i + 8] == '>')
+                    {
+                        var colorSlice = span.Slice(i + 2, 6);
+                        if (IsHexString(colorSlice))
+                        {
+                            tagStack.Push(new TagInfo(colorSlice.ToString(), TagType.Hash));
+                            result.Append($"[c/{colorSlice.ToString()}:");
+                            i += 8;
+                            continue;
+                        }
+                    }
+                    else if (i + 3 < span.Length && span.Slice(i, 4).SequenceEqual("</#>".AsSpan()))
+                    {
+                        if (tagStack.Count > 0 && tagStack.Peek().Type == TagType.Hash)
+                        {
+                            tagStack.Pop();
+                            result.Append(']');
+                        }
+                        i += 3;
+                        continue;
                     }
                 }
 
                 if (currentChar == '>')
                 {
-                    if (colorStack.Count > 0)
+                    if (tagStack.Count > 0 && tagStack.Peek().Type == TagType.Colon)
                     {
-                        colorStack.Pop();
+                        tagStack.Pop();
                         result.Append(']');
                         continue;
                     }
@@ -94,20 +96,20 @@ namespace AskAI
                 
                 if (currentChar == '\n')
                 {
-                    var reversedStack = new Stack<string>(colorStack.Count);
-                    while (colorStack.Count > 0)
+                    var reversedStack = new Stack<TagInfo>(tagStack.Count);
+                    while (tagStack.Count > 0)
                     {
                         result.Append(']');
-                        reversedStack.Push(colorStack.Pop());
+                        reversedStack.Push(tagStack.Pop());
                     }
 
                     result.Append('\n');
                     
                     while (reversedStack.Count > 0)
                     {
-                        string color = reversedStack.Pop();
-                        result.Append($"[c/{color}:");
-                        colorStack.Push(color);
+                        var tagInfo = reversedStack.Pop();
+                        result.Append($"[c/{tagInfo.Color}:");
+                        tagStack.Push(tagInfo);
                     }
                     continue;
                 }
@@ -115,10 +117,10 @@ namespace AskAI
                 result.Append(currentChar);
             }
             
-            while (colorStack.Count > 0)
+            while (tagStack.Count > 0)
             {
                 result.Append(']');
-                colorStack.Pop();
+                tagStack.Pop();
             }
 
             return result.ToString();
