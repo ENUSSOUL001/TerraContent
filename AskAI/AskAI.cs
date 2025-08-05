@@ -8,6 +8,7 @@ using TShockAPI;
 using Microsoft.Xna.Framework;
 using System.Net.Http;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace AskAI
 {
@@ -34,7 +35,7 @@ namespace AskAI
             string configPath = Path.Combine(TShock.SavePath, "AskAI", "config.json");
             _config = AskAIConfig.Read(configPath);
             
-            _askAiCommand = new Command("", AskAICommand, "askai")
+            _askAiCommand = new Command("askai.use", AskAICommand, "askai")
             {
                 HelpText = "Asks a question to the AI. Usage: /askai <your question>",
                 AllowServer = false
@@ -69,8 +70,9 @@ namespace AskAI
 
         private async void AskAICommand(CommandArgs args)
         {
-            var parameters = args.Parameters;
-            if (parameters.Count == 0)
+            var (modelToUse, userPrompt) = ParseArguments(args.Parameters);
+
+            if (string.IsNullOrWhiteSpace(userPrompt))
             {
                 string usage = TextHelper.Colorize("/askai", TextHelper.UsageColor);
                 string param = TextHelper.Colorize("<your question>", TextHelper.UsageParamColor);
@@ -78,131 +80,147 @@ namespace AskAI
                 return;
             }
 
+            TShock.Utils.Broadcast("Waiting for AI response...", TextHelper.InfoColor);
+
+            var (success, initialAiResponse, rawRequestBody, rawResponseBody) = await HandleApiRequest(args.Player, modelToUse, userPrompt);
+            
+            if (success)
+            {
+                string processedResponse = TextHelper.ConvertAiColorTags(initialAiResponse);
+                LogRequest(args.Player.Name, _currentApiKeyIndex, modelToUse, userPrompt, rawRequestBody, rawResponseBody, initialAiResponse, processedResponse, true);
+                BroadcastResponse(args.Player, userPrompt, processedResponse);
+            }
+            else
+            {
+                args.Player.SendErrorMessage("AI request failed after trying all available API keys. Please check the server logs for details.");
+            }
+        }
+
+        private (string model, string prompt) ParseArguments(List<string> parameters)
+        {
             string modelToUse = _config.ModelId;
-            if (parameters.Contains("-flash"))
+            var promptParts = new List<string>(parameters);
+
+            if (promptParts.Contains("-flash"))
             {
                 modelToUse = "gemini-2.5-flash";
-                parameters.Remove("-flash");
+                promptParts.Remove("-flash");
             }
-            else if (parameters.Contains("-lite"))
+            else if (promptParts.Contains("-lite"))
             {
                 modelToUse = "gemini-2.5-flash-lite";
-                parameters.Remove("-lite");
+                promptParts.Remove("-lite");
             }
 
-            if (parameters.Count == 0)
-            {
-                args.Player.SendErrorMessage("Please provide a prompt to ask the AI.");
-                return;
-            }
+            return (modelToUse, string.Join(" ", promptParts));
+        }
 
-            string userPrompt = string.Join(" ", parameters);
-            string finalPrompt = $"Asked from {args.Player.Name}: {userPrompt}";
-
-            TShock.Utils.Broadcast("Waiting for response...", TextHelper.InfoColor);
-
-            string aiResponse = null;
-            bool success = false;
-            string rawRequestBody = "";
-            string rawResponseBody = "";
+        private async Task<(bool success, string response, string reqBody, string resBody)> HandleApiRequest(TSPlayer player, string modelToUse, string userPrompt)
+        {
+            string finalPrompt = $"Asked from {player.Name}: {userPrompt}";
             
             for (int i = 0; i < _config.ApiKeys.Count; i++)
             {
                 try
                 {
                     string apiKey = _config.ApiKeys[_currentApiKeyIndex];
-                    (aiResponse, rawRequestBody, rawResponseBody) = await VertexAI.AskAsync(finalPrompt, _config, apiKey, modelToUse);
-                    success = true;
-                    LogRequest(args.Player.Name, _currentApiKeyIndex, modelToUse, userPrompt, rawRequestBody, rawResponseBody, aiResponse);
-                    break;
+                    var (aiResponse, rawRequestBody, rawResponseBody) = await VertexAI.AskAsync(finalPrompt, _config, apiKey, modelToUse);
+                    return (true, aiResponse, rawRequestBody, rawResponseBody);
                 }
                 catch (HttpRequestException ex)
                 {
-                    if (ex.Message.Contains("\"code\": 429") || ex.Message.Contains("RESOURCE_EXHAUSTED") || ex.Message.Contains("API key expired"))
+                    bool isQuotaError = ex.Message.Contains("\"code\": 429") || ex.Message.Contains("RESOURCE_EXHAUSTED") || ex.Message.Contains("API key expired");
+                    if (isQuotaError)
                     {
-                        LogToFile($"[KEY_FAILURE] User: {args.Player.Name} | KeyIndex: {_currentApiKeyIndex} | Prompt: {userPrompt}\n[ERROR] {ex.Message}\n");
+                        LogRequest(player.Name, _currentApiKeyIndex, modelToUse, userPrompt, "", ex.Message, null, null, false, true);
                         _currentApiKeyIndex = (_currentApiKeyIndex + 1) % _config.ApiKeys.Count;
                         
-                        if (i < _config.ApiKeys.Count - 1) 
+                        if (i < _config.ApiKeys.Count - 1)
                         {
-                             TShock.Utils.Broadcast("Something happened... Hold on....", TextHelper.InfoColor);
+                            TShock.Utils.Broadcast("Something happened... Hold on...", TextHelper.InfoColor);
                         }
                         continue;
                     }
                     else
                     {
-                        BroadcastError(ex);
-                        LogToFile($"[FAILURE] User: {args.Player.Name} | Prompt: {userPrompt}\n[ERROR] {ex}\n");
-                        return;
+                        player.SendErrorMessage("An API request error occurred. Check server logs for details.");
+                        TShock.Log.Error($"[AskAI] API Request Failed: {ex}");
+                        LogRequest(player.Name, _currentApiKeyIndex, modelToUse, userPrompt, "", ex.ToString(), null, null, false);
+                        return (false, null, null, null);
                     }
                 }
                 catch (Exception ex)
                 {
-                    BroadcastError(ex);
-                    LogToFile($"[FAILURE] User: {args.Player.Name} | Prompt: {userPrompt}\n[ERROR] {ex}\n");
-                    return;
+                    player.SendErrorMessage("A critical error occurred. Check server logs for details.");
+                    TShock.Log.Error($"[AskAI] Critical Failure: {ex}");
+                    LogRequest(player.Name, _currentApiKeyIndex, modelToUse, userPrompt, "", ex.ToString(), null, null, false);
+                    return (false, null, null, null);
                 }
             }
+            return (false, null, null, null);
+        }
 
-            if (success)
+        private void BroadcastResponse(TSPlayer asker, string userPrompt, string processedResponse)
+        {
+            string promptDisplay = TextHelper.Colorize($"\"{userPrompt}\"", Color.LightGray);
+            string header = $" - Asked by {asker.Name}";
+            TShock.Utils.Broadcast($"{promptDisplay}{header}", TextHelper.AINameColor);
+            
+            string responseHeader = TextHelper.Colorize("<AI>", TextHelper.AINameColor);
+            
+            const int terrariaChatLimit = 500;
+            var responseLines = processedResponse.Split('\n');
+            bool headerSent = false;
+
+            foreach (var line in responseLines)
             {
-                aiResponse = TextHelper.ConvertAiColorTags(aiResponse);
-                
-                string promptDisplay = TextHelper.Colorize($"\"{userPrompt}\"", Color.LightGray);
-                string header = $" - Asked by {args.Player.Name}";
-                TShock.Utils.Broadcast($"{promptDisplay}{header}", TextHelper.AINameColor);
-                
-                string responseHeader = TextHelper.Colorize("AskAI:", TextHelper.AINameColor);
-                
-                const int terrariaChatLimit = 500;
-                var responseLines = aiResponse.Split('\n');
-
-                foreach (var line in responseLines)
+                if (string.IsNullOrWhiteSpace(line))
                 {
-                    for (int i = 0; i < line.Length; i += terrariaChatLimit)
+                    TShock.Utils.Broadcast(" ", Color.White);
+                    continue;
+                }
+
+                for (int i = 0; i < line.Length; i += terrariaChatLimit)
+                {
+                    string chunk = line.Substring(i, Math.Min(terrariaChatLimit, line.Length - i));
+                    if (!headerSent)
                     {
-                        string chunk = line.Substring(i, Math.Min(terrariaChatLimit, line.Length - i));
                         TShock.Utils.Broadcast($"{responseHeader} {chunk}", Color.White);
+                        headerSent = true;
+                    }
+                    else
+                    {
+                        TShock.Utils.Broadcast(chunk, Color.White);
                     }
                 }
             }
-            else
-            {
-                args.Player.SendErrorMessage("AI request failed after trying all available API keys. Please check the server console for details.", TextHelper.ErrorColor);
-            }
         }
         
-        private static void BroadcastError(Exception ex)
-        {
-            TShock.Utils.Broadcast("[AskAI] API Request Failed. Full error details:", TextHelper.ErrorColor);
-            string fullError = ex.ToString();
-            const int terrariaChatLimit = 500;
-            for (int i = 0; i < fullError.Length; i += terrariaChatLimit)
-            {
-                string chunk = fullError.Substring(i, Math.Min(terrariaChatLimit, fullError.Length - i));
-                TShock.Utils.Broadcast(chunk, TextHelper.ErrorColor);
-            }
-        }
-        
-        private void LogRequest(string userName, int keyIndex, string model, string prompt, string requestBody, string rawResponse, string parsedResponse)
+        private void LogRequest(string userName, int keyIndex, string model, string prompt, string requestBody, string rawResponse, string initialAiOutput, string processedAiOutput, bool success, bool isQuotaError = false)
         {
             var logMessage = new StringBuilder();
-            logMessage.AppendLine($"[SUCCESS] User: {userName} | KeyIndex: {keyIndex} | Model: {model} | Prompt: {prompt}");
+            string status = isQuotaError ? "KEY_FAILURE" : (success ? "SUCCESS" : "FAILURE");
+            logMessage.AppendLine($"[{status}] User: {userName} | KeyIndex: {keyIndex} | Model: {model} | Prompt: {prompt}");
 
-            if (_config.LogSettings.LogApiRequests)
+            if (_config.LogSettings.LogApiRequests && !string.IsNullOrEmpty(requestBody))
             {
                 logMessage.AppendLine("--- REQUEST BODY ---");
                 logMessage.AppendLine(requestBody);
             }
-            if (_config.LogSettings.LogApiRawResponses)
+            if (_config.LogSettings.LogApiRawResponses && !string.IsNullOrEmpty(rawResponse))
             {
                 logMessage.AppendLine("--- RAW RESPONSE ---");
                 logMessage.AppendLine(rawResponse);
             }
-            if (_config.LogSettings.LogParsedResponses)
+            if (_config.LogSettings.LogInitialAiOutput && !string.IsNullOrEmpty(initialAiOutput))
             {
-                logMessage.AppendLine("--- PARSED RESPONSE ---");
-                logMessage.AppendLine(parsedResponse);
+                logMessage.AppendLine("--- INITIAL AI OUTPUT ---");
+                logMessage.AppendLine(initialAiOutput);
+            }
+            if (_config.LogSettings.LogProcessedAiOutput && !string.IsNullOrEmpty(processedAiOutput))
+            {
+                logMessage.AppendLine("--- PROCESSED FINAL OUTPUT ---");
+                logMessage.AppendLine(processedAiOutput);
             }
             
             LogToFile(logMessage.ToString());
