@@ -1,7 +1,8 @@
 using Microsoft.Xna.Framework;
+using System;
 using System.Collections.Generic;
 using System.Text;
-using System.Text.RegularExpressions;
+using TShockAPI;
 
 namespace AskAI
 {
@@ -20,67 +21,94 @@ namespace AskAI
             return $"[c/{color.R:X2}{color.G:X2}{color.B:X2}:{text}]";
         }
 
-        public static string ConvertAiColorTags(string text)
+        public static string ConvertAiColorTags(string inputText)
         {
-            var result = new StringBuilder();
-            var colorStack = new Stack<string>();
-            int i = 0;
-
-            while (i < text.Length)
+            if (string.IsNullOrEmpty(inputText))
             {
-                if (text[i] == '<' && i + 8 < text.Length && text[i + 7] == ':')
+                return string.Empty;
+            }
+
+            var result = new StringBuilder(inputText.Length + 50);
+            var colorStack = new Stack<string>();
+            var span = inputText.AsSpan();
+
+            for (int i = 0; i < span.Length; i++)
+            {
+                char currentChar = span[i];
+                
+                if (currentChar == '<' && i + 8 < span.Length && span[i + 7] == ':')
                 {
-                    string color = text.Substring(i + 1, 6);
-                    if (Regex.IsMatch(color, @"^[0-9A-Fa-f]{6}$"))
+                    var colorSlice = span.Slice(i + 1, 6);
+                    if (IsHexString(colorSlice))
                     {
+                        string color = colorSlice.ToString();
                         colorStack.Push(color);
                         result.Append($"[c/{color}:");
-                        i += 8;
+                        i += 7;
                         continue;
                     }
                 }
-
-                if (text[i] == '>')
+                
+                if (currentChar == '>')
                 {
                     if (colorStack.Count > 0)
                     {
                         colorStack.Pop();
-                        result.Append("]");
+                        result.Append(']');
+
                         if (colorStack.Count > 0)
                         {
                             result.Append($"[c/{colorStack.Peek()}:");
                         }
-                        i++;
                         continue;
                     }
                 }
-
-                if (text[i] == '\n')
+                
+                if (currentChar == '\n')
                 {
-                    foreach (var color in colorStack)
+                    var reversedStack = new Stack<string>(colorStack.Count);
+                    while (colorStack.Count > 0)
                     {
-                        result.Append("]");
+                        result.Append(']');
+                        reversedStack.Push(colorStack.Pop());
                     }
+
                     result.Append('\n');
-                    foreach (var color in new Stack<string>(colorStack))
+                    
+                    while (reversedStack.Count > 0)
                     {
+                        string color = reversedStack.Pop();
                         result.Append($"[c/{color}:");
+                        colorStack.Push(color);
                     }
-                    i++;
                     continue;
                 }
-
-                result.Append(text[i]);
-                i++;
+                
+                result.Append(currentChar);
             }
-
+            
             while (colorStack.Count > 0)
             {
-                result.Append("]");
+                result.Append(']');
                 colorStack.Pop();
             }
 
             return result.ToString();
+        }
+        
+        private static bool IsHexString(ReadOnlySpan<char> span)
+        {
+            if (span.Length != 6)
+                return false;
+
+            foreach (char c in span)
+            {
+                if (!Uri.IsHexDigit(c))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
     }
 }
