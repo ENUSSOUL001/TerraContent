@@ -61,10 +61,22 @@ namespace AskAI
 
             var vertexResponse = JsonConvert.DeserializeObject<VertexAIResponse>(responseJson);
 
-            var firstCandidate = vertexResponse?.Candidates?.FirstOrDefault();
-            var firstPart = firstCandidate?.Content?.Parts?.FirstOrDefault();
+            var combinedText = new StringBuilder();
+            if (vertexResponse?.Candidates != null)
+            {
+                foreach (var candidate in vertexResponse.Candidates)
+                {
+                    if (candidate.Content?.Parts != null)
+                    {
+                        foreach (var part in candidate.Content.Parts)
+                        {
+                            combinedText.Append(part.Text);
+                        }
+                    }
+                }
+            }
 
-            return (firstPart?.Text ?? "AI response was empty or malformed.", jsonContent, responseJson);
+            return (combinedText.Length > 0 ? combinedText.ToString() : "AI response was empty or malformed.", jsonContent, responseJson);
         }
     }
 
