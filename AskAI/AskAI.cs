@@ -7,6 +7,7 @@ using TerrariaApi.Server;
 using TShockAPI;
 using Microsoft.Xna.Framework;
 using System.Net.Http;
+using System.Text;
 
 namespace AskAI
 {
@@ -112,9 +113,7 @@ namespace AskAI
                     string apiKey = _config.ApiKeys[_currentApiKeyIndex];
                     (aiResponse, rawRequestBody, rawResponseBody) = await VertexAI.AskAsync(finalPrompt, _config, apiKey, modelToUse);
                     success = true;
-                    if (_config.LogSettings.LogApiRequests) LogToFile($"[REQUEST]\nUser: {args.Player.Name}\nKeyIndex: {_currentApiKeyIndex}\nModel: {modelToUse}\n--- REQUEST BODY ---\n{rawRequestBody}\n");
-                    if (_config.LogSettings.LogApiRawResponses) LogToFile($"[RAW RESPONSE]\n--- RAW RESPONSE BODY ---\n{rawResponseBody}\n");
-                    if (_config.LogSettings.LogParsedResponses) LogToFile($"[PARSED RESPONSE]\n--- PARSED RESPONSE TEXT ---\n{aiResponse}\n");
+                    LogRequest(args.Player.Name, _currentApiKeyIndex, modelToUse, userPrompt, rawRequestBody, rawResponseBody, aiResponse);
                     break;
                 }
                 catch (HttpRequestException ex)
@@ -149,9 +148,9 @@ namespace AskAI
             {
                 aiResponse = TextHelper.ConvertAiColorTags(aiResponse);
                 
-                string header = $"Prompt by {args.Player.Name}:";
-                string promptDisplay = TextHelper.Colorize(userPrompt, Color.LightGray);
-                TShock.Utils.Broadcast($"{header} {promptDisplay}", TextHelper.AINameColor);
+                string promptDisplay = TextHelper.Colorize($"\"{userPrompt}\"", Color.LightGray);
+                string header = $" - Asked by {args.Player.Name}";
+                TShock.Utils.Broadcast($"{promptDisplay}{header}", TextHelper.AINameColor);
                 
                 string responseHeader = TextHelper.Colorize("AskAI:", TextHelper.AINameColor);
                 
@@ -185,6 +184,30 @@ namespace AskAI
             }
         }
         
+        private void LogRequest(string userName, int keyIndex, string model, string prompt, string requestBody, string rawResponse, string parsedResponse)
+        {
+            var logMessage = new StringBuilder();
+            logMessage.AppendLine($"[SUCCESS] User: {userName} | KeyIndex: {keyIndex} | Model: {model} | Prompt: {prompt}");
+
+            if (_config.LogSettings.LogApiRequests)
+            {
+                logMessage.AppendLine("--- REQUEST BODY ---");
+                logMessage.AppendLine(requestBody);
+            }
+            if (_config.LogSettings.LogApiRawResponses)
+            {
+                logMessage.AppendLine("--- RAW RESPONSE ---");
+                logMessage.AppendLine(rawResponse);
+            }
+            if (_config.LogSettings.LogParsedResponses)
+            {
+                logMessage.AppendLine("--- PARSED RESPONSE ---");
+                logMessage.AppendLine(parsedResponse);
+            }
+            
+            LogToFile(logMessage.ToString());
+        }
+
         private static void LogToFile(string message)
         {
             try
