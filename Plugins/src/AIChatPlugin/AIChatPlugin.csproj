@@ -1,3 +1,90 @@
 <Project Sdk="Microsoft.NET.Sdk">
-    <Import Project="..\..\template.targets" />
+    <PropertyGroup>
+        <!--
+        This project now correctly defines its own TargetFramework.
+        -->
+        <TargetFramework>net6.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+		<LangVersion>latest</LangVersion>
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <!--
+        This custom output path is preserved from your template.
+        -->
+        <OutputPath>..\..\out\$(Configuration)</OutputPath>
+        <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+        <GenerateAssemblyInformationalVersionAttribute>false</GenerateAssemblyInformationalVersionAttribute>
+        <ResolveAssemblyWarnOrErrorOnTargetArchitectureMismatch>None</ResolveAssemblyWarnOrErrorOnTargetArchitectureMismatch>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-6qmf-mmc7-6c2p"/>
+        <!--
+        This correctly references the official TShock 5.2.4 package.
+        -->
+        <PackageReference Include="TShock" Version="5.2.4">
+            <IncludeAssets>compile</IncludeAssets>
+        </PackageReference>
+    </ItemGroup>
+
+    <ItemGroup>
+        <!--
+        This is specific to AIChatPlugin and correctly includes the language files.
+        The dangerous ..\Shared compile has been removed to prevent errors.
+        -->
+        <EmbeddedResource Include=".\i18n\*.po">
+            <LogicalName>i18n.%(FileName).%(Extension)</LogicalName>
+        </EmbeddedResource>
+    </ItemGroup>
+    
+    <!--
+    All custom build targets from your template are preserved below.
+    -->
+    <Target Name="EmbedNuGetDlls" AfterTargets="ResolveReferences">
+        <ItemGroup>
+            <EmbedNuGetDllsList Include="$(EmbedNuGetDlls.Split(';'))" />
+            
+            <DllsToEmbed Include="@(ReferencePath)" 
+                        Condition="$([System.String]::new(';$(EmbedNuGetDlls);').Contains(';%(FileName)%(Extension);'))" />
+            
+            <EmbeddedResource Include="@(DllsToEmbed)">
+                <LogicalName>embedded.%(FileName)%(Extension)</LogicalName>
+            </EmbeddedResource>
+            
+            <EmbeddedDllLog Include="Embedded DLL: %(DllsToEmbed.Filename)%(DllsToEmbed.Extension) as embedded.%(DllsToEmbed.Filename)%(DllsToEmbed.Extension)" />
+            
+            <ReferenceCopyLocalPaths Remove="@(DllsToEmbed)" />
+        </ItemGroup>
+        
+        <Message Text="Embedding @(DllsToEmbed->Count()) DLLs" Importance="high" 
+                Condition="'@(DllsToEmbed->Count())' != '0'" />
+                
+        <Message Text="@(EmbeddedDllLog)" Importance="high" 
+                Condition="'@(DllsToEmbed->Count())' != '0'" />
+    </Target>
+    
+	<Target Name="CopySpecificNuGetDlls" AfterTargets="Build" Condition="'$(CopyAssemblyToOutDir)' != ''">
+		<ItemGroup>
+			<AllAssemblies Include="@(ReferencePath)" />
+			<SpecificNuGetDlls Include="@(AllAssemblies)"
+								 Condition="$([System.String]::new(';$(CopyAssemblyToOutDir);').Contains(';%(Filename)%(Extension);'))" />
+		</ItemGroup>
+		<Message Text="Specific NuGet DLLs to copy: @(SpecificNuGetDlls)" Importance="high" />
+		<Copy SourceFiles="@(SpecificNuGetDlls)" DestinationFolder="$(OutputPath)" />
+	</Target>
+
+    <Target Name="githash" BeforeTargets="PreBuildEvent">
+        <Exec Command="git log -1 --pretty="format:%25H"" StandardOutputImportance="low" StandardErrorImportance="low" ContinueOnError="true" ConsoleToMSBuild="true">
+            <Output TaskParameter="ConsoleOutput" PropertyName="CommitHashValue"/>
+        </Exec>
+
+        <ItemGroup>
+            <AssemblyAttribute Include="System.Reflection.AssemblyInformationalVersionAttribute">
+                <_Parameter1>$(CommitHashValue)</_Parameter1>
+            </AssemblyAttribute>
+        </ItemGroup>
+    </Target>
 </Project>
