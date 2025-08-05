@@ -112,7 +112,9 @@ namespace AskAI
                     string apiKey = _config.ApiKeys[_currentApiKeyIndex];
                     (aiResponse, rawRequestBody, rawResponseBody) = await VertexAI.AskAsync(finalPrompt, _config, apiKey, modelToUse);
                     success = true;
-                    LogRequest(args.Player.Name, _currentApiKeyIndex, modelToUse, userPrompt, rawRequestBody, rawResponseBody, aiResponse);
+                    if (_config.LogSettings.LogApiRequests) LogToFile($"[REQUEST]\nUser: {args.Player.Name}\nKeyIndex: {_currentApiKeyIndex}\nModel: {modelToUse}\n--- REQUEST BODY ---\n{rawRequestBody}\n");
+                    if (_config.LogSettings.LogApiRawResponses) LogToFile($"[RAW RESPONSE]\n--- RAW RESPONSE BODY ---\n{rawResponseBody}\n");
+                    if (_config.LogSettings.LogParsedResponses) LogToFile($"[PARSED RESPONSE]\n--- PARSED RESPONSE TEXT ---\n{aiResponse}\n");
                     break;
                 }
                 catch (HttpRequestException ex)
@@ -147,14 +149,22 @@ namespace AskAI
             {
                 aiResponse = TextHelper.ConvertAiColorTags(aiResponse);
                 
-                string header = $"Asked by {args.Player.Name}:";
-                TShock.Utils.Broadcast(header, TextHelper.AINameColor);
-
+                string header = $"Prompt by {args.Player.Name}:";
+                string promptDisplay = TextHelper.Colorize(userPrompt, Color.LightGray);
+                TShock.Utils.Broadcast($"{header} {promptDisplay}", TextHelper.AINameColor);
+                
+                string responseHeader = TextHelper.Colorize("AskAI:", TextHelper.AINameColor);
+                
                 const int terrariaChatLimit = 500;
-                for (int i = 0; i < aiResponse.Length; i += terrariaChatLimit)
+                var responseLines = aiResponse.Split('\n');
+
+                foreach (var line in responseLines)
                 {
-                    string chunk = aiResponse.Substring(i, Math.Min(terrariaChatLimit, aiResponse.Length - i));
-                    TShock.Utils.Broadcast(chunk, Color.White);
+                    for (int i = 0; i < line.Length; i += terrariaChatLimit)
+                    {
+                        string chunk = line.Substring(i, Math.Min(terrariaChatLimit, line.Length - i));
+                        TShock.Utils.Broadcast($"{responseHeader} {chunk}", Color.White);
+                    }
                 }
             }
             else
@@ -175,30 +185,6 @@ namespace AskAI
             }
         }
         
-        private void LogRequest(string userName, int keyIndex, string model, string prompt, string requestBody, string rawResponse, string parsedResponse)
-        {
-            var logMessage = new System.Text.StringBuilder();
-            logMessage.AppendLine($"[SUCCESS] User: {userName} | KeyIndex: {keyIndex} | Model: {model} | Prompt: {prompt}");
-
-            if (_config.LogSettings.LogApiRequests)
-            {
-                logMessage.AppendLine("--- REQUEST BODY ---");
-                logMessage.AppendLine(requestBody);
-            }
-            if (_config.LogSettings.LogApiRawResponses)
-            {
-                logMessage.AppendLine("--- RAW RESPONSE ---");
-                logMessage.AppendLine(rawResponse);
-            }
-            if (_config.LogSettings.LogParsedResponses)
-            {
-                logMessage.AppendLine("--- PARSED RESPONSE ---");
-                logMessage.AppendLine(parsedResponse);
-            }
-            
-            LogToFile(logMessage.ToString());
-        }
-
         private static void LogToFile(string message)
         {
             try
