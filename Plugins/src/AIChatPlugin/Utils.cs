@@ -3,6 +3,10 @@ using System.Globalization;
 using System.Text;
 using TShockAPI;
 using static AIChatPlugin.Configuration;
+using System;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace AIChatPlugin;
 internal class Utils
@@ -35,7 +39,10 @@ internal class Utils
             }
             catch (Exception ex)
             {
-                TShock.Log.ConsoleError(string.Format(AIChatPlugin.Instance.GetString("[AIChatPlugin] 处理`{0}`的请求时发生错误！详细信息：{1}"), player.Name, ex.Message));
+                string format = AIChatPlugin.Instance.GetString("[AIChatPlugin] 处理`{0}`的请求时发生错误！详细信息：{1}");
+                string message = string.Format(format, player.Name, ex.Message);
+                TShock.Log.ConsoleError(message);
+
                 if (player.RealPlayer)
                 {
                     player.SendErrorMessage(AIChatPlugin.Instance.GetString("[AIChatPlugin] 处理请求时发生错误！详细信息请查看日志"));
@@ -55,7 +62,7 @@ internal class Utils
         {
             var context = GetContext(player.Index);
             var formattedContext = context.Count > 0 ? string.Join("\n", context) + "\n" : "";
-            using HttpClient client = new() { Timeout = TimeSpan.FromSeconds(Config.AITimeoutPeriod) };
+            using var client = new System.Net.Http.HttpClient() { Timeout = TimeSpan.FromSeconds(Config.AITimeoutPeriod) };
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer 742701d3fea4bed898578856989cb03c.5mKVzv5shSIqkkS7");
             var tools = new List<object>()
             {
@@ -121,11 +128,11 @@ internal class Utils
                     var formattedQuestion = FormatMessage(question);
                     var formattedResponse = FormatMessage(responseMessage);
                     StringBuilder broadcastMessageBuilder = new();
-                    broadcastMessageBuilder.AppendFormat(string.Format(AIChatPlugin.Instance.GetString("[i:267][c/FFD700:{0}]\n"), player.Name));
-                    broadcastMessageBuilder.AppendFormat(string.Format(AIChatPlugin.Instance.GetString("[i:149][c/00FF00:提问: {0}]\n"), formattedQuestion));
+                    broadcastMessageBuilder.AppendFormat(AIChatPlugin.Instance.GetString("[i:267][c/FFD700:{0}]\n"), player.Name);
+                    broadcastMessageBuilder.AppendFormat(AIChatPlugin.Instance.GetString("[i:149][c/00FF00:提问: {0}]\n"), formattedQuestion);
                     broadcastMessageBuilder.AppendLine(AIChatPlugin.Instance.GetString("[c/A9A9A9:============================]"));
-                    broadcastMessageBuilder.AppendFormat(string.Format(AIChatPlugin.Instance.GetString("[i:4805][c/FF00FF:{0}]\n"), Config.AIName));
-                    broadcastMessageBuilder.AppendFormat(string.Format(AIChatPlugin.Instance.GetString("[i:149][c/FF4500:回答:] {0}\n"), formattedResponse));
+                    broadcastMessageBuilder.AppendFormat(AIChatPlugin.Instance.GetString("[i:4805][c/FF00FF:{0}]\n"), Config.AIName);
+                    broadcastMessageBuilder.AppendFormat(AIChatPlugin.Instance.GetString("[i:149][c/FF4500:回答:] {0}\n"), formattedResponse);
                     broadcastMessageBuilder.AppendLine(AIChatPlugin.Instance.GetString("[c/A9A9A9:============================]"));
                     var broadcastMessage = broadcastMessageBuilder.ToString();
                     TSPlayer.All.SendInfoMessage(broadcastMessage); TShock.Log.ConsoleInfo(broadcastMessage);
@@ -138,7 +145,9 @@ internal class Utils
             }
             else
             {
-                TShock.Log.ConsoleError(string.Format(AIChatPlugin.Instance.GetString("[AIChatPlugin] AI未能及时响应，状态码：{0}"), response.StatusCode));
+                string format = AIChatPlugin.Instance.GetString("[AIChatPlugin] AI未能及时响应，状态码：{0}");
+                string message = string.Format(format, response.StatusCode);
+                TShock.Log.ConsoleError(message);
                 if (player.RealPlayer)
                 {
                     player.SendErrorMessage(AIChatPlugin.Instance.GetString("[AIChatPlugin] AI未能及时响应！详细信息请查看日志"));
@@ -151,7 +160,9 @@ internal class Utils
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError(string.Format(AIChatPlugin.Instance.GetString("[AIChatPlugin] 出现错误！详细信息：{0}"), ex.Message));
+            string format = AIChatPlugin.Instance.GetString("[AIChatPlugin] 出现错误！详细信息：{0}");
+            string message = string.Format(format, ex.Message);
+            TShock.Log.ConsoleError(message);
             if (player.RealPlayer)
             {
                 player.SendErrorMessage(AIChatPlugin.Instance.GetString("[AIChatPlugin] 出现错误！详细信息请查看日志"));
@@ -225,7 +236,8 @@ internal class Utils
         }
         if (count == 0 || truncated.Length >= Config.AIAnswerWordsLimit)
         {
-            truncated.Append(string.Format(AIChatPlugin.Instance.GetString("\n\n[i:1344]超出字数限制 {0} 已截断！[i:1344]"), Config.AIAnswerWordsLimit));
+            string format = AIChatPlugin.Instance.GetString("\n\n[i:1344]超出字数限制 {0} 已截断！[i:1344]");
+            truncated.Append(string.Format(format, Config.AIAnswerWordsLimit));
         }
         return truncated.ToString();
     }
