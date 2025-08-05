@@ -5,6 +5,7 @@ using TShockAPI.Hooks;
 using System.Reflection;
 using static AIChatPlugin.Configuration;
 using static AIChatPlugin.Utils;
+using TShock.Localization;
 
 
 namespace AIChatPlugin;
