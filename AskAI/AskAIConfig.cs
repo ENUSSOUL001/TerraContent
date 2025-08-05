@@ -41,6 +41,7 @@ namespace AskAI
     {
         public bool LogApiRequests { get; set; } = true;
         public bool LogApiRawResponses { get; set; } = true;
-        public bool LogParsedResponses { get; set; } = true;
+        public bool LogInitialAiOutput { get; set; } = true;
+        public bool LogProcessedAiOutput { get; set; } = true;
     }
 }
