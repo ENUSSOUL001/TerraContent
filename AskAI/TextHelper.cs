@@ -50,37 +50,44 @@ namespace AskAI
 
                 if (currentChar == '<')
                 {
+                    if (i + 1 < span.Length && span[i + 1] == '#')
+                    {
+                        if (i + 3 < span.Length && span[i + 2] == '/' && span[i + 3] == '>')
+                        {
+                            if (tagStack.Count > 0 && tagStack.Peek().Type == TagType.Hash)
+                            {
+                                tagStack.Pop();
+                                result.Append(']');
+                            }
+                            i += 3;
+                            continue;
+                        }
+                        
+                        if (i + 8 < span.Length && span[i + 8] == '>')
+                        {
+                            var colorSlice = span.Slice(i + 2, 6);
+                            if (IsHexString(colorSlice))
+                            {
+                                string color = colorSlice.ToString();
+                                tagStack.Push(new TagInfo(color, TagType.Hash));
+                                result.Append($"[c/{color}:");
+                                i += 8;
+                                continue;
+                            }
+                        }
+                    }
+                    
                     if (i + 8 < span.Length && span[i + 7] == ':')
                     {
                         var colorSlice = span.Slice(i + 1, 6);
                         if (IsHexString(colorSlice))
                         {
-                            tagStack.Push(new TagInfo(colorSlice.ToString(), TagType.Colon));
-                            result.Append($"[c/{colorSlice.ToString()}:");
+                            string color = colorSlice.ToString();
+                            tagStack.Push(new TagInfo(color, TagType.Colon));
+                            result.Append($"[c/{color}:");
                             i += 7;
                             continue;
                         }
-                    }
-                    else if (i + 8 < span.Length && span[i + 1] == '#' && span[i + 8] == '>')
-                    {
-                        var colorSlice = span.Slice(i + 2, 6);
-                        if (IsHexString(colorSlice))
-                        {
-                            tagStack.Push(new TagInfo(colorSlice.ToString(), TagType.Hash));
-                            result.Append($"[c/{colorSlice.ToString()}:");
-                            i += 8;
-                            continue;
-                        }
-                    }
-                    else if (i + 3 < span.Length && span.Slice(i, 4).SequenceEqual("</#>".AsSpan()))
-                    {
-                        if (tagStack.Count > 0 && tagStack.Peek().Type == TagType.Hash)
-                        {
-                            tagStack.Pop();
-                            result.Append(']');
-                        }
-                        i += 3;
-                        continue;
                     }
                 }
 
