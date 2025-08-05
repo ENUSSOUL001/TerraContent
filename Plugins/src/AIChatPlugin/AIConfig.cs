@@ -1,5 +1,6 @@
 using Newtonsoft.Json;
 using TShockAPI;
+using TShock.Localization;
 
 namespace AIChatPlugin;
 public class Configuration
