@@ -2,17 +2,27 @@ name: Process and Document Zip Archives
 on:
   workflow_dispatch:
     inputs:
+      zip_files_path:
+        description: 'Path to the directory containing the zip files. Defaults to the repository root.'
+        required: false
+        type: string
+        default: '.'
       zip_files:
-        description: 'Zip files to process (e.g., file1.zip file2.zip)'
+        description: 'Zip files to process (e.g., file1.zip file2.zip). Path is relative to "zip_files_path".'
         required: true
         type: string
+      output_path:
+        description: 'Directory for final output. Defaults to root. Will be created if it does not exist.'
+        required: false
+        type: string
+        default: '.'
       overwrite_repository:
         description: 'If true, delete all other files and replace the repo with the generated docs. Ignored if "Just Extract" is enabled.'
         required: true
         type: boolean
         default: false
       just_extract:
-        description: 'If true, only extract the zip files to the repository root and skip documentation generation.'
+        description: 'If true, only extract the zip files to the specified output path and skip documentation.'
         required: false
         type: boolean
         default: false
@@ -44,6 +54,10 @@ jobs:
       - name: Just Extract Zip Archives
         if: ${{ github.event.inputs.just_extract == 'true' }}
         run: |
+          output_dir="${{ github.event.inputs.output_path }}"
+          zip_dir="${{ github.event.inputs.zip_files_path }}"
+          mkdir -p "$output_dir"
+          
           declare -a zip_files_array=()
           while IFS= read -r -d $'\0' file; do
             zip_files_array+=("$file")
@@ -51,24 +65,29 @@ jobs:
           
           for zip_file in "${zip_files_array[@]}"; do
             if [ -z "$zip_file" ]; then continue; fi
-            if [ ! -f "$zip_file" ]; then
-              echo "⚠️ Warning: Skipping '$zip_file' because it was not found."
+            full_zip_path="$zip_dir/$zip_file"
+            
+            if [ ! -f "$full_zip_path" ]; then
+              echo "⚠️ Warning: Skipping '$full_zip_path' because it was not found."
               continue
             fi
 
-            unzip -o "$zip_file" -d .
+            unzip -o "$full_zip_path" -d "$output_dir"
             
             basename_no_ext="$(basename "$zip_file" .zip)"
-            if [ -d "$basename_no_ext" ]; then
-              rsync -a "$basename_no_ext/" .
-              rm -rf "$basename_no_ext"
+            unzipped_subfolder="$output_dir/$basename_no_ext"
+            if [ -d "$unzipped_subfolder" ]; then
+              rsync -a "$unzipped_subfolder/" "$output_dir/"
+              rm -rf "$unzipped_subfolder"
             fi
           done
 
       - name: Process and Generate Documentation Files
         if: ${{ github.event.inputs.just_extract == 'false' }}
         run: |
-          mkdir -p final_docs
+          output_dir="${{ github.event.inputs.output_path }}"
+          zip_dir="${{ github.event.inputs.zip_files_path }}"
+          mkdir -p "$output_dir"
           
           declare -a zip_files_array=()
           while IFS= read -r -d $'\0' file; do
@@ -77,21 +96,24 @@ jobs:
           
           for zip_file in "${zip_files_array[@]}"; do
             if [ -z "$zip_file" ]; then continue; fi
-            if [ ! -f "$zip_file" ]; then
-              echo "⚠️ Warning: Skipping '$zip_file' because it was not found."
+            full_zip_path="$zip_dir/$zip_file"
+
+            if [ ! -f "$full_zip_path" ]; then
+              echo "⚠️ Warning: Skipping '$full_zip_path' because it was not found."
               continue
             fi
             
             basename="${zip_file%.zip}"
             temp_dir="temp_${basename}"
-            output_file="final_docs/${basename}_documentation.md"
+            output_file="${output_dir}/${basename}_documentation.md"
             
             mkdir -p "$temp_dir"
-            unzip -o "$zip_file" -d "$temp_dir"
+            unzip -o "$full_zip_path" -d "$temp_dir"
             
-            if [ -d "${temp_dir}/${basename}" ]; then
-              rsync -a "${temp_dir}/${basename}/" "$temp_dir/"
-              rm -rf "${temp_dir}/${basename}"
+            unzipped_subfolder="${temp_dir}/${basename}"
+            if [ -d "$unzipped_subfolder" ]; then
+              rsync -a "$unzipped_subfolder/" "$temp_dir/"
+              rm -rf "$unzipped_subfolder"
             fi
             
             echo "# Project Documentation: ${basename}" > "$output_file"
@@ -123,16 +145,6 @@ jobs:
             
             rm -rf "$temp_dir"
           done
-
-      - name: Finalize Documentation (if not just_extract)
-        if: ${{ github.event.inputs.just_extract == 'false' }}
-        run: |
-          if [ -d "final_docs" ] && [ "$(ls -A final_docs)" ]; then
-            mv final_docs/* .
-          else
-            echo "No documentation files were generated. Skipping finalization."
-          fi
-          rm -rf final_docs
 
       - name: Commit Changes
         run: |
