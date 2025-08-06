@@ -62,7 +62,7 @@ namespace AskAI
 
             string header = TextHelper.Colorize("[AskAI]", TextHelper.GreetHeaderColor);
             string command = TextHelper.Colorize("/askai <prompt>", TextHelper.UsageColor);
-            string flags = TextHelper.Colorize("[optional: -flash|-lite]", TextHelper.UsageParamColor);
+            string flags = TextHelper.Colorize("[optional: -flash]", TextHelper.UsageParamColor);
 
             player.SendMessage(header, Color.White);
             player.SendMessage($"  {command} {flags}", Color.White);
@@ -87,17 +87,17 @@ namespace AskAI
             if (success)
             {
                 string finalResponse = initialAiResponse;
-                if (_config.SmarterConvert)
+                if (_config.SmartRefine.Enabled)
                 {
                     args.Player.SendInfoMessage("AI is refining the response...");
                     try
                     {
-                        string apiKey = _config.ApiKeys[_currentApiKeyIndex]; 
-                        finalResponse = await VertexAI.CleanUpResponseAsync(initialAiResponse, _config, apiKey);
+                        string apiKey = _config.ApiKeys[_currentApiKeyIndex];
+                        finalResponse = await VertexAI.RefineResponseAsync(initialAiResponse, _config, apiKey);
                     }
                     catch (Exception ex)
                     {
-                        TShock.Log.Warn($"[AskAI] SmarterConvert cleanup step failed. Using original response. Error: {ex.Message}");
+                        TShock.Log.Warn($"[AskAI] SmartRefine step failed. Using original response. Error: {ex.Message}");
                     }
                 }
 
@@ -120,11 +120,6 @@ namespace AskAI
             {
                 modelToUse = "gemini-2.5-flash";
                 promptParts.Remove("-flash");
-            }
-            else if (promptParts.Contains("-lite"))
-            {
-                modelToUse = "gemini-2.5-flash-lite";
-                promptParts.Remove("-lite");
             }
 
             return (modelToUse, string.Join(" ", promptParts));
