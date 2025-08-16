@@ -1,3 +1,4 @@
+using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -374,7 +375,7 @@ namespace TerraGuide
                 }
             }
         }
-        
+
         private IEnumerable<string> SplitTextIntoChunks(string text, int chunkSize)
         {
             for (int i = 0; i < text.Length; i += chunkSize)
