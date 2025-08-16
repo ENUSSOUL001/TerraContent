@@ -1,11 +1,14 @@
 document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('generation-form');
+    const submitButton = document.getElementById('submit-button');
     const jobsContainer = document.getElementById('jobs-container');
     const sizeSelect = document.getElementById('size');
     const customSizeContainer = document.getElementById('custom-size-container');
     const widthInput = document.getElementById('width');
     const heightInput = document.getElementById('height');
     const themeSwitcher = document.getElementById('theme-switcher');
+
+    let isGenerating = false;
 
     const sizeMap = {
         "Small": { width: 4200, height: 1200 },
@@ -38,7 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const selectedSize = sizeMap[sizeSelect.value];
             if (selectedSize) {
                 widthInput.value = selectedSize.width;
-                heightInput.value = selectede.height;
+                heightInput.value = selectedSize.height;
             }
         }
     };
@@ -48,6 +51,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     form.addEventListener('submit', (event) => {
         event.preventDefault();
+        if (isGenerating) return;
+
+        isGenerating = true;
+        submitButton.disabled = true;
+        submitButton.textContent = 'Generating...';
         
         const formData = new FormData(form);
         const runCount = parseInt(formData.get('run_count'), 10);
@@ -56,7 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const options = {};
         for (const [key, value] of formData.entries()) {
-            if (form.elements[key].type === 'checkbox') {
+            if (form.elements[key] && form.elements[key].type === 'checkbox') {
                  options[key] = getCheckboxValue(key);
             } else {
                  options[key] = value;
