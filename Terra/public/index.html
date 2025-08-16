@@ -8,13 +8,20 @@
 </head>
 <body>
     <header>
-        <h1>TerraAWG Online <span class="subtitle">(not official)</span></h1>
-        <p>By alpha0010 - <a href="https://github.com/alpha0010/terra-awg" target="_blank" rel="noopener noreferrer">Original Project</a></p>
-        <div id="theme-switcher">
-            <button class="theme-button active" data-theme="default">Default</button>
-            <button class="theme-button" data-theme="purple">Purple</button>
-            <button class="theme-button" data-theme="steam">Steam</button>
-            <button class="theme-button" data-theme="light">Light</button>
+        <div class="header-content">
+            <div class="title-group">
+                <h1>TerraAWG<br>Online</h1>
+                <span class="subtitle">(not official)</span>
+            </div>
+            <div class="meta-group">
+                <p>Original by alpha0010 - <a href="https://github.com/alpha0010/terra-awg" target="_blank" rel="noopener noreferrer">Original Project</a></p>
+                <div id="theme-switcher">
+                    <button class="theme-button active" data-theme="default">Default</button>
+                    <button class="theme-button" data-theme="purple">Purple</button>
+                    <button class="theme-button" data-theme="steam">Steam</button>
+                    <button class="theme-button" data-theme="light">Light</button>
+                </div>
+            </div>
         </div>
     </header>
 
@@ -151,54 +158,4 @@
                     <div class="form-group"><label for="dungeonSize">dungeonSize</label><input type="number" id="dungeonSize" name="dungeonSize" value="1.0" step="0.1"></div>
                     <div class="form-group"><label for="templeSize">templeSize</label><input type="number" id="templeSize" name="templeSize" value="1.0" step="0.1"></div>
                     <div class="form-group"><label for="evilSize">evilSize</label><input type="number" id="evilSize" name="evilSize" value="1.0" step="0.1"></div>
-                    <div class="form-group"><label for="oceanSize">oceanSize</label><input type="number" id="oceanSize" name="oceanSize" value="1.0" step="0.1"></div>
-                    <div class="form-group"><label for="oceanCaveSize">oceanCaveSize</label><input type="number" id="oceanCaveSize" name="oceanCaveSize" value="1.0" step="0.1"></div>
-                    <div class="form-group"><label for="marbleFreq">marbleFreq</label><input type="number" id="marbleFreq" name="marbleFreq" value="1.0" step="0.1"></div>
-                    <div class="form-group"><label for="marbleSize">marbleSize</label><input type="number" id="marbleSize" name="marbleSize" value="1.0" step="0.1"></div>
-                    <div class="form-group"><label for="graniteFreq">graniteFreq</label><input type="number" id="graniteFreq" name="graniteFreq" value="1.0" step="0.1"></div>
-                    <div class="form-group"><label for="graniteSize">graniteSize</label><input type="number" id="graniteSize" name="graniteSize" value="1.0" step="0.1"></div>
-                    <div class="form-group"><label for="glowingMushroomFreq">glowingMushroomFreq</label><input type="number" id="glowingMushroomFreq" name="glowingMushroomFreq" value="1.0" step="0.1"></div>
-                    <div class="form-group"><label for="glowingMushroomSize">glowingMushroomSize</label><input type="number" id="glowingMushroomSize" name="glowingMushroomSize" value="1.0" step="0.1"></div>
-                    <div class="form-group"><label for="hiveFreq">hiveFreq</label><input type="number" id="hiveFreq" name="hiveFreq" value="1.0" step="0.1"></div>
-                    <div class="form-group"><label for="hiveSize">hiveSize</label><input type="number" id="hiveSize" name="hiveSize" value="1.0" step="0.1"></div>
-                    <div class="form-group"><label for="spiderNestFreq">spiderNestFreq</label><input type="number" id="spiderNestFreq" name="spiderNestFreq" value="1.0" step="0.1"></div>
-                    <div class="form-group"><label for="spiderNestSize">spiderNestSize</label><input type="number" id="spiderNestSize" name="spiderNestSize" value="1.0" step="0.1"></div>
-                    <div class="form-group"><label for="glowingMossFreq">glowingMossFreq</label><input type="number" id="glowingMossFreq" name="glowingMossFreq" value="1.0" step="0.1"></div>
-                    <div class="form-group"><label for="glowingMossSize">glowingMossSize</label><input type="number" id="glowingMossSize" name="glowingMossSize" value="1.0" step="0.1"></div>
-                    <div class="form-group"><label for="snowSize">snowSize</label><input type="number" id="snowSize" name="snowSize" value="1.0" step="0.1"></div>
-                    <div class="form-group"><label for="desertSize">desertSize</label><input type="number" id="desertSize" name="desertSize" value="1.0" step="0.1"></div>
-                    <div class="form-group"><label for="jungleSize">jungleSize</label><input type="number" id="jungleSize" name="jungleSize" value="1.0" step="0.1"></div>
-                    <div class="form-group"><label for="surfaceAmplitude">surfaceAmplitude</label><input type="number" id="surfaceAmplitude" name="surfaceAmplitude" value="1.5" step="0.1"></div>
-                </div>
-            </fieldset>
-
-            <fieldset>
-                <legend>[extra]</legend>
-                <div class="form-group">
-                    <label><input type="checkbox" name="map" checked> map</label>
-                    <small>Output a map preview image.</small>
-                </div>
-            </fieldset>
-            
-            <fieldset>
-                <legend>Run Configuration</legend>
-                <div class="form-group">
-                    <label for="run_count">Number of Worlds to Generate</label>
-                    <input type="number" id="run_count" name="run_count" min="1" max="10" value="1">
-                </div>
-            </fieldset>
-
-            <button type="submit" id="submit-button" class="button-44" role="button">Generate</button>
-        </form>
-
-        <section id="status-section">
-            <h2>Generation Status</h2>
-            <div id="jobs-container">
-                <p>Jobs will appear here once you start a generation.</p>
-            </div>
-        </section>
-    </main>
-
-    <script src="script.js"></script>
-</body>
-</html>
+                    <div class="form-group"><label for="oceanSize">oceanSize</label><input type="number" id="oceanSize" na
