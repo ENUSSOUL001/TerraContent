@@ -1,47 +1,34 @@
-const { getStore } = require('@netlify/blobs');
-const crypto = require('crypto');
-
 exports.handler = async (event) => {
-  const secret = process.env.GITHUB_WEBHOOK_SECRET;
-  const signature = event.headers['x-hub-signature-256'];
+  console.log('--- WEBHOOK HANDLER INVOCATION ---');
+  console.log('Headers Received:', JSON.stringify(event.headers, null, 2));
   
-  const hmac = crypto.createHmac('sha256', secret);
-  const digest = `sha256=${hmac.update(event.body).digest('hex')}`;
+  const secret = process.env.GITHUB_WEBHOOK_SECRET;
+  console.log('Secret Loaded from Environment:', secret ? `A secret of length ${secret.length} was loaded.` : 'SECRET IS UNDEFINED OR EMPTY!');
+  
+  console.log('Type of event.body:', typeof event.body);
+  console.log('Content of event.body (first 500 chars):', event.body.substring(0, 500));
 
-  if (!signature || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(digest))) {
-    return { statusCode: 401, body: 'Unauthorized' };
-  }
-
-  const payload = JSON.parse(event.body);
-
-  if (payload.action === 'completed' && payload.workflow_run) {
-    const run = payload.workflow_run;
-    const runId = run.id.toString();
-    const statusStore = getStore('job-statuses');
+  if (secret && typeof event.body === 'string') {
+    const crypto = require('crypto');
+    const hmac = crypto.createHmac('sha256', secret);
+    const calculatedDigest = `sha256=${hmac.update(event.body).digest('hex')}`;
     
-    let artifactInfo = null;
-    if (run.conclusion === 'success' && run.artifacts_url) {
-      const artifactsResponse = await fetch(run.artifacts_url, {
-        headers: { 'Authorization': `token ${process.env.GITHUB_PAT}`, 'Accept': 'application/vnd.github.v3+json' },
-      });
-      if(artifactsResponse.ok) {
-        const artifactsData = await artifactsResponse.json();
-        const worldArtifact = artifactsData.artifacts.find(art => art.name === 'generated-world-files');
-        if (worldArtifact) {
-            artifactInfo = { id: worldArtifact.id, expired: worldArtifact.expired };
-        }
-      }
+    console.log('Signature Received from GitHub:', event.headers['x-hub-signature-256']);
+    console.log('Signature Calculated by Us:', calculatedDigest);
+
+    if (event.headers['x-hub-signature-256'] === calculatedDigest) {
+      console.log('SUCCESS: Signatures match!');
+    } else {
+      console.log('ERROR: SIGNATURES DO NOT MATCH!');
     }
-
-    const statusUpdate = {
-      status: run.status,
-      conclusion: run.conclusion,
-      artifact: artifactInfo,
-      timestamp: new Date().toISOString()
-    };
-    
-    await statusStore.setJSON(runId, statusUpdate);
+  } else {
+    console.log('Skipping signature calculation because secret is missing or body is not a string.');
   }
 
-  return { statusCode: 200, body: 'OK' };
+  console.log('--- END OF INVOCATION ---');
+
+  return {
+    statusCode: 200,
+    body: 'Debug log generated. Check Netlify function logs.',
+  };
 };
