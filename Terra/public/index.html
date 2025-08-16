@@ -3,18 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Terra AWG Runner</title>
+    <title>TerraAWG Online</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <header>
-        <h1>Terra Advanced World Generator Interface</h1>
+        <h1>TerraAWG Online <span class="subtitle">(not official)</span></h1>
         <p>By alpha0010 - <a href="https://github.com/alpha0010/terra-awg" target="_blank" rel="noopener noreferrer">Original Project</a></p>
+        <div id="theme-switcher">
+            <button class="theme-button active" data-theme="default">Default</button>
+            <button class="theme-button" data-theme="purple">Purple</button>
+            <button class="theme-button" data-theme="steam">Steam</button>
+            <button class="theme-button" data-theme="light">Light</button>
+        </div>
     </header>
 
     <main id="app">
         <form id="generation-form">
-
             <fieldset>
                 <legend>[world]</legend>
                 <div class="form-group">
@@ -183,7 +188,7 @@
                 </div>
             </fieldset>
 
-            <button type="submit" id="submit-button">Generate Worlds</button>
+            <button type="submit" id="submit-button" class="button-44" role="button">Generate</button>
         </form>
 
         <section id="status-section">
