@@ -8,7 +8,7 @@ on:
         type: number
         default: 1
       timeouts:
-        description: 'Timeout in minutes for each run (e.g., "30" or "30,20,40"). If fewer values are provided than runs, the last value is reused.'
+        description: 'Timeout in minutes for each run (e.g., "30" or "30,20,40"). If fewer values are provided, the last value is reused.'
         required: true
         type: string
         default: '30'
@@ -16,19 +16,14 @@ on:
 jobs:
   generate-worlds:
     runs-on: ubuntu-latest
-    
     strategy:
       fail-fast: false
       matrix:
-        run_number: ${{ fromJson(format('[{0}]', join(range(1, github.event.inputs.run_count + 1), ','))) }}
+        run_number: ${{ fromJson(format('[{0}]', join(range(1, github.event.inputs.run_count), ','))) }}
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
-      - name: Create Main Output Directory
-        if: matrix.run_number == 1
-        run: mkdir -p output
 
       - name: Make TerraAWG executable
         run: chmod +x Terra/terra-awg
@@ -82,24 +77,28 @@ jobs:
           
           echo "Files for run #${{ matrix.run_number }} have been successfully moved."
 
-  upload-artifact:
+      - name: Upload Artifact for this Run
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-run-${{ matrix.run_number }}
+          path: output/
+          if-no-files-found: error
+
+  combine-artifacts:
     needs: generate-worlds
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        
-      - name: Download generated files from matrix jobs
+      - name: Download all generated world folders
         uses: actions/download-artifact@v4
         with:
-          name: generated-worlds-run-${{ matrix.run_number }}
-          path: output/
+          path: combined-output/
+          pattern: generated-run-*
           merge-multiple: true
 
       - name: Upload Single Combined Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: generated-worlds-archive
-          path: output/
+          name: All-Generated-Worlds
+          path: combined-output/
           if-no-files-found: warn
