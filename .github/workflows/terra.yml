@@ -2,54 +2,9 @@ name: TerraAWG Runner (Ubuntu)
 on:
   workflow_dispatch:
     inputs:
-      use_custom_ini:
-        description: 'Bypass all options below and use the existing Terra/terra-awg.ini in the repo?'
+      json_config:
+        description: 'A JSON string containing all world generation options.'
         required: true
-        type: boolean
-        default: false
-      name:
-        description: 'World Name (use RANDOM for a random name)'
-        required: true
-        type: string
-        default: 'Terra AWG World'
-      seed:
-        description: 'World Seed (use RANDOM for a random seed)'
-        required: true
-        type: string
-        default: 'RANDOM'
-      size:
-        description: 'Select a world size'
-        required: true
-        type: choice
-        options: [Extra Small, Small, Medium, Large, Extra Large]
-        default: 'Medium'
-      evil:
-        description: 'Select the world evil'
-        required: true
-        type: choice
-        options: [RANDOM, corruption, crimson]
-        default: 'RANDOM'
-      hardmode_options:
-        description: 'Select a Hardmode option'
-        required: true
-        type: choice
-        options: [Disabled, Enabled, 'Enabled (with Hardmode Loot)']
-        default: 'Disabled'
-      starter_options:
-        description: 'Select starter home and equipment options'
-        required: true
-        type: choice
-        options:
-        - 'No'
-        - 'Home Only'
-        - 'Home + Iron Gear'
-        - 'Home + Platinum Gear'
-        - 'Home + Hellstone Gear'
-        - 'Home + Mythril Gear'
-        default: 'No'
-      world_options:
-        description: 'Enter numbers for options (e.g., 13). 1=Drunk, 2=Shattered, 3=FTW, 4=Sunken, 5=Purity'
-        required: false
         type: string
 
 jobs:
@@ -57,69 +12,100 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
       - name: Make TerraAWG executable
         run: chmod +x Terra/terra-awg
 
-      - name: Generate config file from inputs
-        if: github.event.inputs.use_custom_ini == false
+      - name: Generate INI from JSON
+        id: generate_ini
         shell: bash
         run: |
-          width=6400; height=1800
-          case "${{ github.event.inputs.size }}" in
-            "Extra Small") width=2100; height=600 ;;
-            "Small")       width=4200; height=1200 ;;
-            "Medium")      width=6400; height=1800 ;;
-            "Large")       width=8400; height=2400 ;;
-            "Extra Large") width=12600; height=3600 ;;
-          esac
+          echo "--- Validating JSON input ---"
+          JSON_DATA='${{ github.event.inputs.json_config }}'
+          if [[ -z "$JSON_DATA" ]]; then
+            echo "Error: json_config input is empty."
+            exit 1
+          fi
+          echo "JSON is not empty. Proceeding."
 
-          hardmode="false"; hardmodeLoot="false"
-          case "${{ github.event.inputs.hardmode_options }}" in
-            "Enabled") hardmode="true" ;;
-            "Enabled (with Hardmode Loot)") hardmode="true"; hardmodeLoot="true" ;;
-          esac
+          INI_FILE="Terra/terra-awg.ini"
 
-          generateHome="false"; equipment="none"
-          case "${{ github.event.inputs.starter_options }}" in
-            "Home Only")              generateHome="true" ;;
-            "Home + Iron Gear")       generateHome="true"; equipment="iron" ;;
-            "Home + Platinum Gear")   generateHome="true"; equipment="platinum" ;;
-            "Home + Hellstone Gear")  generateHome="true"; equipment="hellstone" ;;
-            "Home + Mythril Gear")    generateHome="true"; equipment="mythril" ;;
-          esac
-
-          options_string="${{ github.event.inputs.world_options }}"
-          doubleTrouble="false"; if [[ "$options_string" == *"1"* ]]; then doubleTrouble="true"; fi
-          shattered="false"; if [[ "$options_string" == *"2"* ]]; then shattered="true"; fi
-          forTheWorthy="false"; if [[ "$options_string" == *"3"* ]]; then forTheWorthy="true"; fi
-          sunken="false"; if [[ "$options_string" == *"4"* ]]; then sunken="true"; fi
-          purity="false"; if [[ "$options_string" == *"5"* ]]; then purity="true"; fi
-
-          cat <<EOF > "Terra/terra-awg.ini"
+          echo "--- Generating terra-awg.ini ---"
+          cat <<EOF > $INI_FILE
           [world]
-          name = ${{ github.event.inputs.name }}
-          seed = ${{ github.event.inputs.seed }}
-          width = $width
-          height = $height
-          mode = classic
-          evil = ${{ github.event.inputs.evil }}
-          home = $generateHome
-          [variation]
-          equipment = $equipment
-          doubleTrouble = $doubleTrouble
-          shattered = $shattered
-          sunken = $sunken
-          purity = $purity
-          forTheWorthy = $forTheWorthy
-          hardmode = $hardmode
-          hardmodeLoot = $hardmodeLoot
-          [extra]
-          map = true
-          EOF
+          name = $(echo "$JSON_DATA" | jq -r .name)
+          seed = $(echo "$JSON_DATA" | jq -r .seed)
+          width = $(echo "$JSON_DATA" | jq -r .width)
+          height = $(echo "$JSON_DATA" | jq -r .height)
+          mode = $(echo "$JSON_DATA" | jq -r .mode)
+          evil = $(echo "$JSON_DATA" | jq -r .evil)
+          home = $(echo "$JSON_DATA" | jq -r .home)
 
-          cat "Terra/terra-awg.ini"
+          [variation]
+          equipment = $(echo "$JSON_DATA" | jq -r .equipment)
+          spawn = $(echo "$JSON_DATA" | jq -r .spawn)
+          unpainted = $(echo "$JSON_DATA" | jq -r .unpainted)
+          fadedMemories = $(echo "$JSON_DATA" | jq -r .fadedMemories)
+          doubleTrouble = $(echo "$JSON_DATA" | jq -r .doubleTrouble)
+          shattered = $(echo "$JSON_DATA" | jq -r .shattered)
+          sunken = $(echo "$JSON_DATA" | jq -r .sunken)
+          purity = $(echo "$JSON_DATA" | jq -r .purity)
+          hardmode = $(echo "$JSON_DATA" | jq -r .hardmode)
+          hardmodeLoot = $(echo "$JSON_DATA" | jq -r .hardmodeLoot)
+          biomes = $(echo "$JSON_DATA" | jq -r .biomes)
+          patchesHumidity = $(echo "$JSON_DATA" | jq -r .patchesHumidity)
+          patchesTemperature = $(echo "$JSON_DATA" | jq -r .patchesTemperature)
+          patchesSize = $(echo "$JSON_DATA" | jq -r .patchesSize)
+          celebration = $(echo "$JSON_DATA" | jq -r .celebration)
+          hiveQueen = $(echo "$JSON_DATA" | jq -r .hiveQueen)
+          forTheWorthy = $(echo "$JSON_DATA" | jq -r .forTheWorthy)
+          meteorites = $(echo "$JSON_DATA" | jq -r .meteorites)
+          meteoriteSize = $(echo "$JSON_DATA" | jq -r .meteoriteSize)
+          ore = $(echo "$JSON_DATA" | jq -r .ore)
+          lifeCrystals = $(echo "$JSON_DATA" | jq -r .lifeCrystals)
+          manaCrystals = $(echo "$JSON_DATA" | jq -r .manaCrystals)
+          pots = $(echo "$JSON_DATA" | jq -r .pots)
+          chests = $(echo "$JSON_DATA" | jq -r .chests)
+          gems = $(echo "$JSON_DATA" | jq -r .gems)
+          traps = $(echo "$JSON_DATA" | jq -r .traps)
+          trees = $(echo "$JSON_DATA" | jq -r .trees)
+          livingTrees = $(echo "$JSON_DATA" | jq -r .livingTrees)
+          clouds = $(echo "$JSON_DATA" | jq -r .clouds)
+          asteroids = $(echo "$JSON_DATA" | jq -r .asteroids)
+          minecartTracks = $(echo "$JSON_DATA" | jq -r .minecartTracks)
+          minecartLength = $(echo "$JSON_DATA" | jq -r .minecartLength)
+          aetherSize = $(echo "$JSON_DATA" | jq -r .aetherSize)
+          dungeonSize = $(echo "$JSON_DATA" | jq -r .dungeonSize)
+          templeSize = $(echo "$JSON_DATA" | jq -r .templeSize)
+          evilSize = $(echo "$JSON_DATA" | jq -r .evilSize)
+          oceanSize = $(echo "$JSON_DATA" | jq -r .oceanSize)
+          oceanCaveSize = $(echo "$JSON_DATA" | jq -r .oceanCaveSize)
+          marbleFreq = $(echo "$JSON_DATA" | jq -r .marbleFreq)
+          marbleSize = $(echo "$JSON_DATA" | jq -r .marbleSize)
+          graniteFreq = $(echo "$JSON_DATA" | jq -r .graniteFreq)
+          graniteSize = $(echo "$JSON_DATA" | jq -r .graniteSize)
+          glowingMushroomFreq = $(echo "$JSON_DATA" | jq -r .glowingMushroomFreq)
+          glowingMushroomSize = $(echo "$JSON_DATA" | jq -r .glowingMushroomSize)
+          hiveFreq = $(echo "$JSON_DATA" | jq -r .hiveFreq)
+          hiveSize = $(echo "$JSON_DATA" | jq -r .hiveSize)
+          spiderNestFreq = $(echo "$JSON_DATA" | jq -r .spiderNestFreq)
+          spiderNestSize = $(echo "$JSON_DATA" | jq -r .spiderNestSize)
+          glowingMossFreq = $(echo "$JSON_DATA" | jq -r .glowingMossFreq)
+          glowingMossSize = $(echo "$JSON_DATA" | jq -r .glowingMossSize)
+          snowSize = $(echo "$JSON_DATA" | jq -r .snowSize)
+          desertSize = $(echo "$JSON_DATA" | jq -r .desertSize)
+          jungleSize = $(echo "$JSON_DATA" | jq -r .jungleSize)
+          surfaceAmplitude = $(echo "$JSON_DATA" | jq -r .surfaceAmplitude)
+
+          [extra]
+          map = $(echo "$JSON_DATA" | jq -r .map)
+          EOF
+          
+          echo "--- Generated terra-awg.ini ---"
+          cat $INI_FILE
+          echo "-------------------------------"
 
       - name: Run World Generator
         id: run_generator
@@ -128,31 +114,23 @@ jobs:
           max_attempts=14
           for ((attempt=1; attempt<=max_attempts; attempt++)); do
             echo "Running world generator, attempt $attempt of $max_attempts (30 minute timeout)..."
-            
-            # This 'if' structure catches the exit code from 'timeout'.
-            # If the command succeeds (exit code 0), the 'if' block runs.
-            # If it fails or times out (non-zero exit code), the script continues past the 'if'.
             if timeout 30m bash -c 'cd Terra && ./terra-awg'; then
               echo "World generator succeeded on attempt $attempt."
-              exit 0 # Success, so we exit the whole script with code 0.
+              exit 0 
             fi
-            
-            # If we're here, the command failed. Let's find out why.
             exit_code=$?
             if [ $exit_code -eq 124 ]; then
               echo "Attempt $attempt failed: Timed out after 30 minutes."
             else
               echo "Attempt $attempt failed with a different error (exit code $exit_code)."
             fi
-
             if [ $attempt -lt $max_attempts ]; then
-              echo "Waiting a few seconds before the next attempt..."
+              echo "Waiting 20 seconds before the next attempt..."
               sleep 20
             fi
           done
-
           echo "All $max_attempts attempts have failed."
-          exit 1 # Explicitly fail the step after all retries are exhausted.
+          exit 1
 
       - name: Upload Success Artifact
         if: success()
@@ -166,8 +144,7 @@ jobs:
 
       - name: Handle Generation Failure
         if: failure()
-        run: |
-          echo "The world generator failed after all 14 attempts. Check the 'Run World Generator' step logs for details." > "generator-failure-log.txt"
+        run: echo "The world generator failed after all 14 attempts. Check the 'Run World Generator' step logs for details." > "generator-failure-log.txt"
 
       - name: Upload Failure Artifact
         if: failure()
