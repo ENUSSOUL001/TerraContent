@@ -7,12 +7,193 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h1>Terra Advanced World Generator Interface</h1>
-    <p>By alpha0010 - <a href="https://github.com/alpha0010/terra-awg" target="_blank" rel="noopener noreferrer">Original Project</a></p>
-    <hr>
-    <div id="app">
-        <p>Loading interface...</p>
-    </div>
+    <header>
+        <h1>Terra Advanced World Generator Interface</h1>
+        <p>By alpha0010 - <a href="https://github.com/alpha0010/terra-awg" target="_blank" rel="noopener noreferrer">Original Project</a></p>
+    </header>
+
+    <main id="app">
+        <form id="generation-form">
+
+            <fieldset>
+                <legend>[world]</legend>
+                <div class="form-group">
+                    <label for="name">name</label>
+                    <input type="text" id="name" name="name" value="RANDOM">
+                    <small>Name of the generated world. Use 'RANDOM' for a randomly generated name.</small>
+                </div>
+                <div class="form-group">
+                    <label for="seed">seed</label>
+                    <input type="text" id="seed" name="seed" value="RANDOM">
+                    <small>World generation seed. Use 'RANDOM' for a randomly generated seed.</small>
+                </div>
+                <div class="form-group">
+                    <label for="size">World Size</label>
+                    <select id="size" name="size">
+                        <option value="Small">Small (4200x1200)</option>
+                        <option value="Medium">Medium (6400x1800)</option>
+                        <option value="Large" selected>Large (8400x2400)</option>
+                        <option value="Custom">Custom Size</option>
+                    </select>
+                </div>
+                <div id="custom-size-container" class="form-grid-2 hidden">
+                    <div class="form-group">
+                        <label for="width">width</label>
+                        <input type="number" id="width" name="width" value="8400">
+                    </div>
+                    <div class="form-group">
+                        <label for="height">height</label>
+                        <input type="number" id="height" name="height" value="2400">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="mode">mode</label>
+                    <select id="mode" name="mode">
+                        <option value="journey">journey</option>
+                        <option value="classic">classic</option>
+                        <option value="expert" selected>expert</option>
+                        <option value="master">master</option>
+                    </select>
+                    <small>Difficulty: journey/classic/expert/master</small>
+                </div>
+                <div class="form-group">
+                    <label for="evil">evil</label>
+                    <select id="evil" name="evil">
+                        <option value="RANDOM" selected>RANDOM</option>
+                        <option value="corruption">corruption</option>
+                        <option value="crimson">crimson</option>
+                    </select>
+                    <small>Evil biome: RANDOM/corruption/crimson</small>
+                </div>
+                <div class="form-group">
+                    <label><input type="checkbox" name="home"> home</label>
+                    <small>Add a starter home at the spawn point.</small>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>[variation]</legend>
+                <div class="form-group">
+                    <label for="equipment">equipment</label>
+                    <select id="equipment" name="equipment">
+                        <option value="none" selected>none</option>
+                        <option value="iron">iron</option>
+                        <option value="platinum">platinum</option>
+                        <option value="hellstone">hellstone</option>
+                        <option value="mythril">mythril</option>
+                    </select>
+                    <small>Add starter equipment at the spawn point.</small>
+                </div>
+                <div class="form-group">
+                    <label for="spawn">spawn</label>
+                    <select id="spawn" name="spawn">
+                        <option value="normal">normal</option>
+                        <option value="surface" selected>surface</option>
+                        <option value="cloud">cloud</option>
+                        <option value="ocean">ocean</option>
+                        <option value="cavern">cavern</option>
+                        <option value="underworld">underworld</option>
+                    </select>
+                    <small>Select spawn point.</small>
+                </div>
+                <div class="form-group">
+                    <label><input type="checkbox" name="unpainted"> unpainted</label>
+                    <small>Prevent other settings from fully painting large structures and biomes.</small>
+                </div>
+                <div class="form-group">
+                    <label for="fadedMemories">fadedMemories</label>
+                    <input type="number" id="fadedMemories" name="fadedMemories" min="0" max="1" step="0.01" value="0.03">
+                    <small>Apply echo coating to a portion of the world. 0.5 means apply to half the tiles.</small>
+                </div>
+                <div class="form-group"><label><input type="checkbox" name="doubleTrouble" checked> doubleTrouble</label><small>Include both evil biomes and all ore variants.</small></div>
+                <div class="form-group"><label><input type="checkbox" name="shattered"> shattered</label><small>Break up the world into floating islands.</small></div>
+                <div class="form-group"><label><input type="checkbox" name="sunken"> sunken</label><small>Flood the majority of the world surface.</small></div>
+                <div class="form-group"><label><input type="checkbox" name="purity"> purity</label><small>Only generate non-spreading biomes.</small></div>
+                <div class="form-group"><label><input type="checkbox" name="hardmode" checked> hardmode</label><small>Start with hardmode activated.</small></div>
+                <div class="form-group"><label><input type="checkbox" name="hardmodeLoot" checked> hardmodeLoot</label><small>Modidify chest loot to be more applicable to a hardmode start.</small></div>
+                <div class="form-group">
+                    <label for="biomes">biomes</label>
+                    <select id="biomes" name="biomes">
+                        <option value="columns" selected>columns</option>
+                        <option value="layers">layers</option>
+                        <option value="patches">patches</option>
+                    </select>
+                    <small>Biome distribution layout.</small>
+                </div>
+                <div class="form-group"><label for="patchesHumidity">patchesHumidity</label><input type="number" id="patchesHumidity" name="patchesHumidity" min="-0.5" max="0.5" step="0.05" value="0.0"></div>
+                <div class="form-group"><label for="patchesTemperature">patchesTemperature</label><input type="number" id="patchesTemperature" name="patchesTemperature" min="-0.5" max="0.5" step="0.05" value="0.0"></div>
+                <div class="form-group"><label for="patchesSize">patchesSize</label><input type="number" id="patchesSize" name="patchesSize" min="0.1" max="5" step="0.1" value="1.0"></div>
+                <div class="form-group"><label><input type="checkbox" name="celebration"> celebration</label><small>Activates "celebrationmk10" secret seed.</small></div>
+                <div class="form-group"><label><input type="checkbox" name="hiveQueen"> hiveQueen</label><small>Activates "not the bees" secret seed.</small></div>
+                <div class="form-group"><label><input type="checkbox" name="forTheWorthy"> forTheWorthy</label><small>Activates "for the worthy" secret seed.</small></div>
+                <div class="form-group"><label for="meteorites">meteorites</label><input type="number" id="meteorites" name="meteorites" value="0" step="1"></div>
+                <div class="form-group"><label for="meteoriteSize">meteoriteSize</label><input type="number" id="meteoriteSize" name="meteoriteSize" value="1.0" step="0.1"></div>
+                <div class="form-grid-responsive">
+                    <div class="form-group"><label for="ore">ore</label><input type="number" id="ore" name="ore" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="lifeCrystals">lifeCrystals</label><input type="number" id="lifeCrystals" name="lifeCrystals" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="manaCrystals">manaCrystals</label><input type="number" id="manaCrystals" name="manaCrystals" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="pots">pots</label><input type="number" id="pots" name="pots" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="chests">chests</label><input type="number" id="chests" name="chests" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="gems">gems</label><input type="number" id="gems" name="gems" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="traps">traps</label><input type="number" id="traps" name="traps" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="trees">trees</label><input type="number" id="trees" name="trees" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="livingTrees">livingTrees</label><input type="number" id="livingTrees" name="livingTrees" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="clouds">clouds</label><input type="number" id="clouds" name="clouds" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="asteroids">asteroids</label><input type="number" id="asteroids" name="asteroids" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="minecartTracks">minecartTracks</label><input type="number" id="minecartTracks" name="minecartTracks" value="2.0" step="0.1"></div>
+                    <div class="form-group"><label for="minecartLength">minecartLength</label><input type="number" id="minecartLength" name="minecartLength" value="2.0" step="0.1"></div>
+                    <div class="form-group"><label for="aetherSize">aetherSize</label><input type="number" id="aetherSize" name="aetherSize" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="dungeonSize">dungeonSize</label><input type="number" id="dungeonSize" name="dungeonSize" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="templeSize">templeSize</label><input type="number" id="templeSize" name="templeSize" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="evilSize">evilSize</label><input type="number" id="evilSize" name="evilSize" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="oceanSize">oceanSize</label><input type="number" id="oceanSize" name="oceanSize" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="oceanCaveSize">oceanCaveSize</label><input type="number" id="oceanCaveSize" name="oceanCaveSize" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="marbleFreq">marbleFreq</label><input type="number" id="marbleFreq" name="marbleFreq" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="marbleSize">marbleSize</label><input type="number" id="marbleSize" name="marbleSize" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="graniteFreq">graniteFreq</label><input type="number" id="graniteFreq" name="graniteFreq" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="graniteSize">graniteSize</label><input type="number" id="graniteSize" name="graniteSize" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="glowingMushroomFreq">glowingMushroomFreq</label><input type="number" id="glowingMushroomFreq" name="glowingMushroomFreq" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="glowingMushroomSize">glowingMushroomSize</label><input type="number" id="glowingMushroomSize" name="glowingMushroomSize" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="hiveFreq">hiveFreq</label><input type="number" id="hiveFreq" name="hiveFreq" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="hiveSize">hiveSize</label><input type="number" id="hiveSize" name="hiveSize" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="spiderNestFreq">spiderNestFreq</label><input type="number" id="spiderNestFreq" name="spiderNestFreq" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="spiderNestSize">spiderNestSize</label><input type="number" id="spiderNestSize" name="spiderNestSize" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="glowingMossFreq">glowingMossFreq</label><input type="number" id="glowingMossFreq" name="glowingMossFreq" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="glowingMossSize">glowingMossSize</label><input type="number" id="glowingMossSize" name="glowingMossSize" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="snowSize">snowSize</label><input type="number" id="snowSize" name="snowSize" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="desertSize">desertSize</label><input type="number" id="desertSize" name="desertSize" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="jungleSize">jungleSize</label><input type="number" id="jungleSize" name="jungleSize" value="1.0" step="0.1"></div>
+                    <div class="form-group"><label for="surfaceAmplitude">surfaceAmplitude</label><input type="number" id="surfaceAmplitude" name="surfaceAmplitude" value="1.5" step="0.1"></div>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>[extra]</legend>
+                <div class="form-group">
+                    <label><input type="checkbox" name="map" checked> map</label>
+                    <small>Output a map preview image.</small>
+                </div>
+            </fieldset>
+            
+            <fieldset>
+                <legend>Run Configuration</legend>
+                <div class="form-group">
+                    <label for="run_count">Number of Worlds to Generate</label>
+                    <input type="number" id="run_count" name="run_count" min="1" max="10" value="1">
+                </div>
+            </fieldset>
+
+            <button type="submit" id="submit-button">Generate Worlds</button>
+        </form>
+
+        <section id="status-section">
+            <h2>Generation Status</h2>
+            <div id="jobs-container">
+                <p>Jobs will appear here once you start a generation.</p>
+            </div>
+        </section>
+    </main>
+
     <script src="script.js"></script>
 </body>
 </html>
