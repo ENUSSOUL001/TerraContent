@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const widthInput = document.getElementById('width');
     const heightInput = document.getElementById('height');
 
+    let jobs = [];
     let isSubmitting = false;
     let pollingInterval;
 
@@ -15,6 +16,21 @@ document.addEventListener('DOMContentLoaded', () => {
         "Medium": { width: 6400, height: 1800 },
         "Large": { width: 8400, height: 2400 }
     };
+
+    function saveJobs() {
+        localStorage.setItem('terra-jobs', JSON.stringify(jobs));
+    }
+
+    function loadJobs() {
+        const savedJobs = localStorage.getItem('terra-jobs');
+        if (savedJobs) {
+            jobs = JSON.parse(savedJobs);
+            renderAllJobs();
+            if (jobs.some(job => job.status !== 'Completed' && job.runId)) {
+                startPolling();
+            }
+        }
+    }
 
     const toggleCustomSize = () => {
         if (sizeSelect.value === 'Custom') {
@@ -44,34 +60,42 @@ document.addEventListener('DOMContentLoaded', () => {
         const runCount = parseInt(formData.get('run_count'), 10);
         const options = getOptionsFromForm(formData);
 
-        jobsContainer.innerHTML = ''; 
-        
+        const newJobs = [];
         for (let i = 0; i < runCount; i++) {
-            const jobId = `job_${Date.now()}_${i}`;
-            addJobToDashboard(jobId, options, 'Submitting...');
-            
+            const job = {
+                id: `job_${Date.now()}_${i}`,
+                options: options,
+                status: 'Submitting...',
+                runId: null,
+                artifactId: null,
+                downloadUrl: null,
+                isError: false,
+                isComplete: false,
+                timestamp: new Date().toISOString()
+            };
+            newJobs.push(job);
+        }
+        
+        jobs = [...newJobs, ...jobs];
+        renderAllJobs();
+        saveJobs();
+
+        for (const job of newJobs) {
             try {
                 const response = await fetch('/api/get-run-id', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ options })
+                    body: JSON.stringify({ options: job.options })
                 });
-                
-                if (!response.ok) throw new Error(`Failed to get Run ID: ${await response.text()}`);
-                
+                if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
                 const { run_id } = await response.json();
-                const jobElement = document.getElementById(jobId);
-                jobElement.dataset.runId = run_id;
-                updateJobStatus(jobId, 'Queued on GitHub...');
+                updateJobState(job.id, { runId: run_id, status: 'Queued on GitHub' });
             } catch (error) {
-                updateJobStatus(jobId, `Error: ${error.message}`, true);
+                updateJobState(job.id, { status: `Error: ${error.message}`, isError: true, isComplete: true });
             }
         }
 
-        if (!pollingInterval) {
-            pollingInterval = setInterval(pollAllJobs, 15000);
-        }
-
+        startPolling();
         isSubmitting = false;
         submitButton.disabled = false;
         submitButton.textContent = 'Generate';
@@ -102,8 +126,14 @@ document.addEventListener('DOMContentLoaded', () => {
         return options;
     }
     
-    async function pollAllJobs() {
-        const activeJobs = document.querySelectorAll('.job-card[data-run-id]:not([data-completed="true"])');
+    function startPolling() {
+        if (pollingInterval) clearInterval(pollingInterval);
+        pollingInterval = setInterval(pollAllJobs, 15000);
+        pollAllJobs(); 
+    }
+
+    function pollAllJobs() {
+        const activeJobs = jobs.filter(job => job.runId && !job.isComplete);
         if (activeJobs.length === 0) {
             clearInterval(pollingInterval);
             pollingInterval = null;
@@ -111,21 +141,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         activeJobs.forEach(job => {
-            const runId = job.dataset.runId;
-            const jobId = job.id;
-            fetch(`/api/check-status?run_id=${runId}`)
+            fetch(`/api/check-status?run_id=${job.runId}`)
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 'completed') {
-                        job.dataset.completed = "true";
-                        if (data.conclusion === 'success') {
-                            updateJobStatus(jobId, 'Success! Fetching artifact...', false);
-                            fetchArtifact(jobId, runId, data.artifact.id);
+                        if (data.conclusion === 'success' && data.artifact) {
+                            updateJobState(job.id, { status: 'Success! Fetching artifact...', artifactId: data.artifact.id });
+                            fetchArtifact(job.id);
                         } else {
-                            updateJobStatus(jobId, `Failed: ${data.conclusion}`, true);
+                            updateJobState(job.id, { status: `Failed: ${data.conclusion || 'Unknown Reason'}`, isError: true, isComplete: true });
                         }
                     } else {
-                        updateJobStatus(jobId, `In Progress (${data.status})...`);
+                        updateJobState(job.id, { status: `In Progress (${data.status})...` });
                     }
                 })
                 .catch(err => {
@@ -134,48 +161,79 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    async function fetchArtifact(jobId, runId, artifactId) {
+    async function fetchArtifact(jobId) {
+        const job = jobs.find(j => j.id === jobId);
+        if (!job || !job.runId || !job.artifactId) return;
+
         try {
-            const res = await fetch(`/api/get-artifact?run_id=${runId}&artifact_id=${artifactId}`);
+            const res = await fetch(`/api/get-artifact?run_id=${job.runId}&artifact_id=${job.artifactId}`);
             if (!res.ok) throw new Error('Could not fetch artifact link.');
             const { downloadUrl } = await res.json();
-            
-            const jobElement = document.getElementById(jobId);
-            const resultsContainer = jobElement.querySelector('.job-results');
-            resultsContainer.innerHTML = `<a href="${downloadUrl}" class="download-button" target="_blank" rel="noopener noreferrer">Download World Files (.zip)</a>`;
-
+            updateJobState(jobId, { downloadUrl: downloadUrl, status: 'Completed', isComplete: true });
         } catch(error) {
-            updateJobStatus(jobId, 'Error fetching artifact.', true);
+            updateJobState(jobId, { status: 'Error fetching artifact.', isError: true, isComplete: true });
         }
     }
     
-    function updateJobStatus(jobId, text, isError = false) {
-        const jobElement = document.getElementById(jobId);
-        if (jobElement) {
-            const statusElement = jobElement.querySelector('.status-text');
-            statusElement.textContent = text;
-            statusElement.style.color = isError ? '#dc3545' : 'inherit';
+    function updateJobState(jobId, updates) {
+        const jobIndex = jobs.findIndex(j => j.id === jobId);
+        if (jobIndex > -1) {
+            jobs[jobIndex] = { ...jobs[jobIndex], ...updates };
+            saveJobs();
+            renderSingleJob(jobs[jobIndex]);
         }
     }
 
-    function addJobToDashboard(jobId, options, initialStatus) {
+    function renderAllJobs() {
+        jobsContainer.innerHTML = '';
+        if (jobs.length === 0) {
+            jobsContainer.innerHTML = '<p>Jobs will appear here once you start a generation.</p>';
+            return;
+        }
+        jobs.forEach(job => {
+            const jobElement = createJobElement(job);
+            jobsContainer.appendChild(jobElement);
+        });
+    }
+
+    function renderSingleJob(job) {
+        const existingElement = document.getElementById(job.id);
+        const newElement = createJobElement(job);
+        if (existingElement) {
+            existingElement.replaceWith(newElement);
+        } else {
+            jobsContainer.prepend(newElement);
+        }
+    }
+
+    function createJobElement(job) {
         const jobElement = document.createElement('div');
         jobElement.className = 'job-card';
-        jobElement.id = jobId;
-        const mapStatus = options.map === 'true' 
+        jobElement.id = job.id;
+        jobElement.dataset.runId = job.runId;
+        if(job.isComplete) jobElement.dataset.completed = "true";
+
+        const mapStatus = job.options.map === 'true' 
             ? '<p>Map Preview: <span class="map-status">Will be available on download.</span></p>' 
             : '<p>Map Preview: <span class="map-status">Disabled</span></p>';
+        
+        let resultsHTML = '';
+        if (job.downloadUrl) {
+            resultsHTML = `<a href="${job.downloadUrl}" class="download-button" target="_blank" rel="noopener noreferrer">Download World Files (.zip)</a>`;
+        }
 
         jobElement.innerHTML = `
-            <h3>${options.name} (Seed: ${options.seed})</h3>
-            <p>Status: <span class="status-text">${initialStatus}</span></p>
+            <h3>${job.options.name} (Seed: ${job.options.seed})</h3>
+            <p>Status: <span class="status-text ${job.isError ? 'error' : ''}">${job.status}</span></p>
             ${mapStatus}
-            <div class="job-results"></div>
+            <div class="job-results">${resultsHTML}</div>
             <details>
                 <summary>Show Config</summary>
-                <pre>${JSON.stringify(options, null, 2)}</pre>
+                <pre>${JSON.stringify(job.options, null, 2)}</pre>
             </details>
         `;
-        jobsContainer.appendChild(jobElement);
+        return jobElement;
     }
+
+    loadJobs();
 });
