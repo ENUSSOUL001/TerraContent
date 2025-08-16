@@ -20,6 +20,27 @@
     <main id="app">
         <form id="generation-form">
             <fieldset>
+                <legend>Preset Management</legend>
+                <div class="preset-controls">
+                    <div class="form-group">
+                        <label for="preset-select">Load Preset</label>
+                        <select id="preset-select">
+                            <option value="">-- Select a preset --</option>
+                        </select>
+                    </div>
+                    <button type="button" id="load-preset-btn" class="button-preset">Load</button>
+                    <button type="button" id="delete-preset-btn" class="button-preset">Delete</button>
+                </div>
+                <div class="preset-controls">
+                    <div class="form-group">
+                        <label for="preset-name">Save Current as Preset</label>
+                        <input type="text" id="preset-name" placeholder="New preset name...">
+                    </div>
+                    <button type="button" id="save-preset-btn" class="button-preset">Save</button>
+                </div>
+            </fieldset>
+
+            <fieldset>
                 <legend>[world]</legend>
                 <div class="form-group">
                     <label for="name">name</label>
@@ -197,6 +218,16 @@
             </div>
         </section>
     </main>
+
+    <div id="results-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <button id="modal-close-btn" class="modal-close">&times;</button>
+            <h2 id="modal-title">Job Results</h2>
+            <div id="modal-body">
+                <p>Loading results...</p>
+            </div>
+        </div>
+    </div>
 
     <script src="script.js"></script>
 </body>
