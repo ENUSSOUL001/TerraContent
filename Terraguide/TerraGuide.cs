@@ -86,13 +86,14 @@ namespace TerraGuide
                 var searchResponse = await _httpClient.GetStringAsync(searchUrl);
                 var searchResult = JArray.Parse(searchResponse);
 
-                if (searchResult.Count < 2 || !searchResult[1].Any())
+                var titles = searchResult.Count > 1 ? searchResult[1] as JArray : null;
+                if (titles == null || !titles.Any())
                 {
                     SendReply(args, $"No wiki page found for '{searchTerm}'. Try a more specific name.", Color.OrangeRed);
                     return;
                 }
 
-                string pageTitle = searchResult[1][0].ToString();
+                string pageTitle = titles[0].ToString();
                 await ProcessWikiRequest(args, pageTitle, mode, pageNumber);
             }
             catch (Exception ex)
@@ -285,7 +286,6 @@ namespace TerraGuide
             foreach (var section in relevantSections)
             {
                 string sectionTitle = section.line;
-                int sectionIndex = section.number;
                 var matches = Regex.Matches(wikitext, @"==\s*" + Regex.Escape(sectionTitle) + @"\s*==([\s\S]*?)(?===|$)");
 
                 if (matches.Any())
@@ -307,7 +307,6 @@ namespace TerraGuide
             var doc = new HtmlDocument();
             doc.LoadHtml(html);
 
-            var acceptableTags = new String[] { "p", "h1", "h2", "h3", "h4", "li", "span" };
             var nodes = doc.DocumentNode.SelectNodes(".//p | .//h1 | .//h2 | .//h3 | .//h4 | .//li | .//span");
 
             var sb = new System.Text.StringBuilder();
@@ -340,22 +339,29 @@ namespace TerraGuide
         private List<string> SplitTextIntoLines(string text, int maxLineLength)
         {
             var lines = new List<string>();
-            var words = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            var currentLine = new System.Text.StringBuilder();
-
-            foreach (var word in words)
+            var paragraphs = text.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            
+            foreach (var paragraph in paragraphs)
             {
-                if (currentLine.Length + word.Length + 1 > maxLineLength)
+                var words = paragraph.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                var currentLine = new System.Text.StringBuilder();
+
+                foreach (var word in words)
+                {
+                    if (currentLine.Length > 0 && currentLine.Length + word.Length + 1 > maxLineLength)
+                    {
+                        lines.Add(currentLine.ToString());
+                        currentLine.Clear();
+                    }
+                    if (currentLine.Length > 0)
+                        currentLine.Append(" ");
+                    currentLine.Append(word);
+                }
+
+                if (currentLine.Length > 0)
                 {
                     lines.Add(currentLine.ToString());
-                    currentLine.Clear();
                 }
-                currentLine.Append(word + " ");
-            }
-
-            if (currentLine.Length > 0)
-            {
-                lines.Add(currentLine.ToString().Trim());
             }
 
             return lines;
@@ -363,13 +369,17 @@ namespace TerraGuide
 
         private void SendReply(CommandArgs args, string message, Color color)
         {
+            var lines = SplitTextIntoChunks(message, 500);
             if (BroadcastMessages)
             {
-                TShock.Utils.Broadcast(message, color);
+                foreach(var line in lines)
+                {
+                    TShock.Utils.Broadcast(line, color);
+                }
             }
             else
             {
-                foreach (var line in SplitTextIntoChunks(message, 500))
+                foreach (var line in lines)
                 {
                     args.Player.SendMessage(line, color);
                 }
