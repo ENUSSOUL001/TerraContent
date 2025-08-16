@@ -14,13 +14,26 @@ on:
         default: '30'
 
 jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix_array: ${{ steps.generate_matrix.outputs.matrix_array }}
+    steps:
+      - name: Generate sequence for matrix
+        id: generate_matrix
+        shell: bash
+        run: |
+          count=${{ github.event.inputs.run_count }}
+          json_array=$(seq 1 $count | jq -s -c '.')
+          echo "matrix_array=$json_array" >> $GITHUB_OUTPUT
+
   generate-worlds:
+    needs: setup
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        run_number: ${{ fromJson(format('[{0}]', join(range(1, github.event.inputs.run_count), ','))) }}
-
+        run_number: ${{ fromJson(needs.setup.outputs.matrix_array) }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -32,8 +45,6 @@ jobs:
         id: run_generator
         shell: bash
         run: |
-          echo "--- Preparing Run #${{ matrix.run_number }} ---"
-          
           IFS=',' read -r -a timeout_array <<< "${{ github.event.inputs.timeouts }}"
           index=$((${{ matrix.run_number }} - 1))
           
@@ -57,7 +68,6 @@ jobs:
             exit 1
           fi
 
-          echo "--- Organizing Files for Run #${{ matrix.run_number }} ---"
           world_file=$(find Terra -maxdepth 1 -name "*.wld" -print -quit)
           
           if [[ -z "$world_file" ]]; then
@@ -68,37 +78,38 @@ jobs:
           world_name=$(basename "$world_file" .wld)
           folder_name="${{ matrix.run_number }}_${world_name}"
           
-          echo "Creating directory: output/${folder_name}"
-          mkdir -p "output/${folder_name}"
+          echo "Creating directory: ${folder_name}"
+          mkdir -p "${folder_name}"
           
-          echo "Moving generated files..."
-          mv Terra/*.wld "output/${folder_name}/"
-          mv Terra/*.png "output/${folder_name}/"
-          
-          echo "Files for run #${{ matrix.run_number }} have been successfully moved."
-
-      - name: Upload Artifact for this Run
+          mv Terra/*.wld "${folder_name}/"
+          mv Terra/*.png "${folder_name}/"
+      
+      - name: Upload temporary artifact for run ${{ matrix.run_number }}
         uses: actions/upload-artifact@v4
         with:
-          name: generated-run-${{ matrix.run_number }}
-          path: output/
+          name: run-output-${{ matrix.run_number }}
+          path: "${{ matrix.run_number }}_*"
           if-no-files-found: error
 
-  combine-artifacts:
+  combine-and-upload:
     needs: generate-worlds
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Download all generated world folders
+      - name: Create final output directory
+        run: mkdir -p final_artifact
+      
+      - name: Download all temporary run artifacts
         uses: actions/download-artifact@v4
         with:
-          path: combined-output/
-          pattern: generated-run-*
-          merge-multiple: true
+          path: final_artifact
+      
+      - name: List downloaded files for verification
+        run: ls -R final_artifact
 
       - name: Upload Single Combined Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: All-Generated-Worlds
-          path: combined-output/
-          if-no-files-found: warn
+          name: generated-worlds-archive
+          path: final_artifact/
+          if-no-files-found: error
