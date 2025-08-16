@@ -11,6 +11,7 @@
     --inset-shadow-color: #5c8bee;
     --button-bg: #4162a8;
     --error-color: #ff8787;
+    --success-color: #87ff95;
     --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --transition-speed: 0.3s;
 }
@@ -124,11 +125,19 @@ input:focus, select:focus {
     transform: scale(0.95);
     animation: zoomIn 0.4s ease-out forwards;
     box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    transition: border-left-color 0.3s ease, transform 0.2s ease;
 }
+.job-card.is-clickable:hover {
+    transform: scale(1.02);
+    cursor: pointer;
+}
+.job-card.is-success { border-left-color: var(--success-color); }
+.job-card.is-error { border-left-color: var(--error-color); }
 @keyframes zoomIn { to { opacity: 1; transform: scale(1); } }
 .job-card h3 { margin: 0 0 0.5rem 0; }
 .job-card p { margin: 0; }
-.job-card .status-text.error { color: var(--error-color); }
+.status-text.is-error { color: var(--error-color); }
+.status-text.is-success { color: var(--success-color); }
 details { margin-top: 1rem; }
 summary { cursor: pointer; color: var(--primary-color); }
 .job-card pre {
@@ -158,3 +167,94 @@ summary { cursor: pointer; color: var(--primary-color); }
 .download-button:hover { transform: translateY(-2px); box-shadow: inset 0 1px 4px 1px var(--primary-color), 0px 3px 0 var(--border-highlight-color), 0 4px 0px var(--shadow-color-1); }
 .download-button:active { transform: translateY(1px); }
 .hidden { display: none !important; }
+.preset-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: flex-end;
+}
+.preset-controls .form-group {
+    flex-grow: 1;
+    margin-bottom: 0;
+}
+.button-preset {
+    padding: 0.75rem;
+    background-color: var(--bg-color);
+    border-top: 1px solid var(--border-highlight-color);
+    border-right: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+    border-left: 1px solid var(--border-highlight-color);
+    color: var(--primary-color);
+    font-weight: bold;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.button-preset:hover {
+    background-color: var(--button-bg);
+    color: #fff;
+}
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+.modal-overlay:not(.hidden) {
+    opacity: 1;
+}
+.modal-content {
+    background-color: var(--surface-color);
+    padding: 2rem;
+    border-radius: 8px;
+    border-top: 1px solid var(--border-highlight-color);
+    border-left: 1px solid var(--border-highlight-color);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    width: 90%;
+    max-width: 800px;
+    max-height: 90vh;
+    overflow-y: auto;
+    position: relative;
+    transform: scale(0.95);
+    transition: transform 0.3s ease;
+}
+.modal-overlay:not(.hidden) .modal-content {
+    transform: scale(1);
+}
+.modal-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: none;
+    border: none;
+    font-size: 2rem;
+    color: var(--subtitle-color);
+    cursor: pointer;
+}
+.modal-map-preview {
+    width: 100%;
+    max-height: 500px;
+    object-fit: contain;
+    background-color: var(--bg-color);
+    border-radius: 4px;
+    margin-bottom: 1.5rem;
+}
+.modal-file-list {
+    list-style: none;
+    padding: 0;
+}
+.modal-file-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
