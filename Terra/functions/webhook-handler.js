@@ -1,34 +1,52 @@
+const { getStore } = require('@netlify/blobs');
+const crypto = require('crypto');
+const fetch = require('node-fetch');
+
 exports.handler = async (event) => {
-  console.log('--- WEBHOOK HANDLER INVOCATION ---');
-  console.log('Headers Received:', JSON.stringify(event.headers, null, 2));
-  
   const secret = process.env.GITHUB_WEBHOOK_SECRET;
-  console.log('Secret Loaded from Environment:', secret ? `A secret of length ${secret.length} was loaded.` : 'SECRET IS UNDEFINED OR EMPTY!');
+  const signature = event.headers['x-hub-signature-256'];
   
-  console.log('Type of event.body:', typeof event.body);
-  console.log('Content of event.body (first 500 chars):', event.body.substring(0, 500));
+  const hmac = crypto.createHmac('sha256', secret);
+  const digest = `sha256=${hmac.update(event.body).digest('hex')}`;
 
-  if (secret && typeof event.body === 'string') {
-    const crypto = require('crypto');
-    const hmac = crypto.createHmac('sha256', secret);
-    const calculatedDigest = `sha256=${hmac.update(event.body).digest('hex')}`;
-    
-    console.log('Signature Received from GitHub:', event.headers['x-hub-signature-256']);
-    console.log('Signature Calculated by Us:', calculatedDigest);
-
-    if (event.headers['x-hub-signature-256'] === calculatedDigest) {
-      console.log('SUCCESS: Signatures match!');
-    } else {
-      console.log('ERROR: SIGNATURES DO NOT MATCH!');
-    }
-  } else {
-    console.log('Skipping signature calculation because secret is missing or body is not a string.');
+  if (!signature || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(digest))) {
+    return { statusCode: 401, body: 'Unauthorized' };
   }
 
-  console.log('--- END OF INVOCATION ---');
+  const payload = JSON.parse(event.body);
 
-  return {
-    statusCode: 200,
-    body: 'Debug log generated. Check Netlify function logs.',
-  };
+  if (payload.action === 'completed' && payload.workflow_run) {
+    const run = payload.workflow_run;
+    const runId = run.id.toString();
+    const statusStore = getStore('job-statuses');
+    
+    let artifactInfo = null;
+    if (run.conclusion === 'success' && run.artifacts_url) {
+      try {
+        const artifactsResponse = await fetch(run.artifacts_url, {
+          headers: { 'Authorization': `token ${process.env.GITHUB_PAT}`, 'Accept': 'application/vnd.github.v3+json' },
+        });
+        if(artifactsResponse.ok) {
+          const artifactsData = await artifactsResponse.json();
+          const worldArtifact = artifactsData.artifacts.find(art => art.name === 'generated-world-files');
+          if (worldArtifact) {
+              artifactInfo = { id: worldArtifact.id, expired: worldArtifact.expired };
+          }
+        }
+      } catch (e) {
+        console.error("Failed to fetch artifact details.", e);
+      }
+    }
+
+    const statusUpdate = {
+      status: run.status,
+      conclusion: run.conclusion,
+      artifact: artifactInfo,
+      timestamp: new Date().toISOString()
+    };
+    
+    await statusStore.setJSON(runId, statusUpdate);
+  }
+
+  return { statusCode: 200, body: 'OK' };
 };
