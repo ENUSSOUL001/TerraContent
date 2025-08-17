@@ -1,5 +1,4 @@
 using Microsoft.Xna.Framework;
-using TShockAPI;
 
 namespace TerraGuide
 {
@@ -14,7 +13,5 @@ namespace TerraGuide
         public static string ColorItem(string text) => $"[c/DDA0DD:{text}]";
 
         public static string ColorRequirement(string text) => $"[c/FF6B6B:{text}]";
-
-        public static string MakeListItem(string text) => $"  • {text}";
     }
 }
