@@ -10,6 +10,7 @@ using Terraria;
 using Terraria.ID;
 using TerrariaApi.Server;
 using TShockAPI;
+using Newtonsoft.Json.Linq;
 
 namespace TerraGuide
 {
@@ -19,7 +20,7 @@ namespace TerraGuide
         public override string Author => "jgranserver & RecipesBrowser contributors";
         public override string Description => "A helpful guide plugin for Terraria servers";
         public override string Name => "TerraGuide";
-        public override Version Version => new Version(3, 0);
+        public override Version Version => new Version(3, 1);
 
         private readonly HttpClient _httpClient;
         private const string WikiApiUrl = "https://terraria.wiki.gg/api.php";
@@ -31,7 +32,7 @@ namespace TerraGuide
             _httpClient = new HttpClient();
             _httpClient.DefaultRequestHeaders.Add(
                 "User-Agent",
-                "TerraGuide/3.0 (TShock Plugin; terraria.wiki.gg/wiki/User:Jgranserver)"
+                "TerraGuide/3.1 (TShock Plugin; terraria.wiki.gg/wiki/User:Jgranserver)"
             );
         }
 
@@ -101,56 +102,52 @@ namespace TerraGuide
             {
                 SendReply(args, $"Searching wiki for: {searchTerm}...", Color.Aqua);
 
-                var searchRequest = new HttpRequestMessage(HttpMethod.Get, searchUrl);
-                searchRequest.Headers.Add("Accept", "application/json");
+                string searchJson = await _httpClient.GetStringAsync(searchUrl);
+                var searchResult = JArray.Parse(searchJson);
+                var titles = searchResult.Count > 1 ? searchResult[1] as JArray : null;
 
-                using (var searchResponse = await _httpClient.SendAsync(searchRequest))
+                if (titles == null || !titles.Any())
                 {
-                    searchResponse.EnsureSuccessStatusCode();
-                    var searchJson = await searchResponse.Content.ReadAsStringAsync();
-
-                    dynamic searchResult = Newtonsoft.Json.JsonConvert.DeserializeObject(searchJson);
-                    var titles = searchResult[1] as Newtonsoft.Json.Linq.JArray;
-
-                    if (titles != null && titles.Count > 0)
-                    {
-                        string exactTitle = titles[0].ToString();
-                        string contentUrl =
-                            $"{WikiApiUrl}?action=query&format=json&prop=revisions&rvprop=content&rvslots=main&titles={HttpUtility.UrlEncode(exactTitle)}";
-
-                        var contentRequest = new HttpRequestMessage(HttpMethod.Get, contentUrl);
-                        contentRequest.Headers.Add("Accept", "application/json");
-
-                        using (var contentResponse = await _httpClient.SendAsync(contentRequest))
-                        {
-                            contentResponse.EnsureSuccessStatusCode();
-                            var contentJson = await contentResponse.Content.ReadAsStringAsync();
-
-                            dynamic result = Newtonsoft.Json.JsonConvert.DeserializeObject(contentJson);
-                            var pages = result.query?.pages;
-
-                            if (pages != null)
-                            {
-                                var firstPageId = ((Newtonsoft.Json.Linq.JObject)pages).Properties().First().Name;
-                                var firstPage = pages[firstPageId];
-
-                                if (firstPage.revisions != null && firstPage.revisions.Count > 0)
-                                {
-                                    string wikiText = firstPage.revisions[0].slots.main["*"].ToString();
-                                    wikiText = CleanWikiText(wikiText);
-
-                                    if (!string.IsNullOrWhiteSpace(wikiText))
-                                    {
-                                        SendReply(args, wikiText, Color.White);
-                                        SendReply(args, $"Read more: https://terraria.wiki.gg/wiki/{HttpUtility.UrlEncode(exactTitle)}", Color.Cyan);
-                                        return;
-                                    }
-                                }
-                            }
-                        }
-                    }
                     SendReply(args, $"No information found for '{searchTerm}'. Try using the exact item name (e.g., 'Dirt Block' instead of 'dirt').", Color.OrangeRed);
+                    return;
                 }
+                
+                string exactTitle = titles[0].ToString();
+                string contentUrl =
+                    $"{WikiApiUrl}?action=query&format=json&prop=revisions&rvprop=content&rvslots=main&titles={HttpUtility.UrlEncode(exactTitle)}";
+
+                string contentJson = await _httpClient.GetStringAsync(contentUrl);
+                var result = JObject.Parse(contentJson);
+                var pages = result?["query"]?["pages"];
+                if (pages == null)
+                {
+                    SendReply(args, $"Could not parse wiki page content for '{exactTitle}'.", Color.OrangeRed);
+                    return;
+                }
+                
+                var firstPage = pages.Values<JProperty>().FirstOrDefault()?.Value;
+                if (firstPage == null)
+                {
+                    SendReply(args, $"Could not find page data for '{exactTitle}'.", Color.OrangeRed);
+                    return;
+                }
+
+                var revisions = firstPage["revisions"] as JArray;
+                if (revisions != null && revisions.Any())
+                {
+                    string wikiText = revisions[0]?["slots"]?["main"]?["*"]?.ToString() ?? "";
+                    wikiText = CleanWikiText(wikiText);
+
+                    if (!string.IsNullOrWhiteSpace(wikiText))
+                    {
+                        SendReply(args, wikiText, Color.White);
+                        SendReply(args, $"Read more: https://terraria.wiki.gg/wiki/{HttpUtility.UrlEncode(exactTitle)}", Color.Cyan);
+                        return;
+                    }
+                }
+
+                SendReply(args, $"No description found for '{exactTitle}'.", Color.OrangeRed);
+
             }
             catch (Exception ex)
             {
@@ -281,14 +278,14 @@ namespace TerraGuide
         {
             wikiText = Regex.Replace(wikiText, @"\{\{item infobox[\s\S]*?\}\}", "");
             wikiText = Regex.Replace(wikiText, @"\{\{[^}]*\}\}", "");
-            wikiText = Regex.Replace(wikiText, @"\[\[File:[^\]]*\]\].*?\n", "");
+            wikiText = Regex.Replace(wikiText, @"\[\[File:[^\]]*?\]\]", "");
             wikiText = Regex.Replace(wikiText, @"\[\[([^|\]]*?)\]\]", "$1");
             wikiText = Regex.Replace(wikiText, @"\[\[(?:[^|\]]*\|)?([^\]]+)\]\]", "$1");
             var paragraphs = wikiText.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
                 .Select(p => p.Trim())
                 .Where(p => !string.IsNullOrWhiteSpace(p) && !p.StartsWith("*") && !p.StartsWith("|") && !p.StartsWith("{{") && !p.StartsWith("}}") && !p.StartsWith("==") && !p.StartsWith(":") && p.Length > 20);
             var description = paragraphs.FirstOrDefault() ?? "No description available.";
-            description = Regex.Replace(description, @"'{2,}", "");
+            description = Regex.Replace(description, @"'{2,5}", "");
             description = Regex.Replace(description, @"\s+", " ");
             description = HttpUtility.HtmlDecode(description).Trim();
             return description;
