@@ -20,7 +20,7 @@ namespace TerraGuide
         public override string Author => "jgranserver & RecipesBrowser contributors";
         public override string Description => "A helpful guide plugin for Terraria servers";
         public override string Name => "TerraGuide";
-        public override Version Version => new Version(3, 1);
+        public override Version Version => new Version(3, 2);
 
         private readonly HttpClient _httpClient;
         private const string WikiApiUrl = "https://terraria.wiki.gg/api.php";
@@ -32,7 +32,7 @@ namespace TerraGuide
             _httpClient = new HttpClient();
             _httpClient.DefaultRequestHeaders.Add(
                 "User-Agent",
-                "TerraGuide/3.1 (TShock Plugin; terraria.wiki.gg/wiki/User:Jgranserver)"
+                "TerraGuide/3.2 (TShock Plugin; terraria.wiki.gg/wiki/User:Jgranserver)"
             );
         }
 
