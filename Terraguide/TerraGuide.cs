@@ -197,51 +197,40 @@ namespace TerraGuide
 
                 SendReply(args, $"Crafting information for {TextHelper.ColorRecipeName(item.Name)}:", Color.Gold);
 
-                for (var i = 0; i < recipes.Count; i++)
+                foreach (var recipe in recipes)
                 {
-                    var result = new StringBuilder();
-                    result.AppendLine($"Recipe {i + 1}:");
-                    result.Append(GetRecipeStringByResult(recipes[i]));
-                    SendReply(args, result.ToString(), Color.White);
+                    var stations = recipe.requiredTile.Where(t => t >= 0).Select(GetStationName).Where(s => !string.IsNullOrEmpty(s)).ToList();
+                    if (stations.Any())
+                    {
+                        SendReply(args, $"Crafting Station: {string.Join(" or ", stations.Select(s => TextHelper.ColorStation(s!)))}", Color.Yellow);
+                    }
+
+                    SendReply(args, "Required Items:", Color.Yellow);
+                    foreach (var ingredient in recipe.requiredItem)
+                    {
+                        if (ingredient.type > 0)
+                        {
+                            SendReply(args, TextHelper.MakeListItem($"{TShock.Utils.ItemTag(ingredient)} {ingredient.Name} ({ingredient.stack})"), Color.White);
+                        }
+                    }
+
+                    var conditions = new List<string>();
+                    if (recipe.needWater) conditions.Add("Water");
+                    if (recipe.needLava) conditions.Add("Lava");
+                    if (recipe.needHoney) conditions.Add("Honey");
+                    if (recipe.needSnowBiome) conditions.Add("Snow Biome");
+                    if (recipe.needGraveyardBiome) conditions.Add("Graveyard");
+
+                    if (conditions.Any())
+                    {
+                        SendReply(args, "Special Requirements:", Color.Yellow);
+                        foreach (var condition in conditions)
+                        {
+                            SendReply(args, TextHelper.MakeListItem(TextHelper.ColorRequirement(condition)), Color.White);
+                        }
+                    }
                 }
             }
-        }
-
-        private string GetRecipeStringByResult(Recipe recipe)
-        {
-            var result = new StringBuilder();
-            result.Append("Ingredients: ");
-            foreach (var item in recipe.requiredItem.Where(r => r.stack > 0))
-            {
-                result.Append(TextHelper.MakeListItem($"{TShock.Utils.ItemTag(item)} {item.Name} ({item.stack})"));
-            }
-            result.AppendLine();
-
-            var stations = recipe.requiredTile.Where(i => i >= 0).Select(GetStationName).Where(s => !string.IsNullOrEmpty(s)).ToList();
-            if (stations.Any())
-            {
-                result.Append("Station: ");
-                result.Append(string.Join(", ", stations.Select(s => TextHelper.ColorStation(s))));
-            }
-            else
-            {
-                result.Append("Station: By Hand [i:3258]");
-            }
-
-            var conditions = new List<string>();
-            if (recipe.needWater) conditions.Add("Water [i:126]");
-            if (recipe.needLava) conditions.Add("Lava [i:4825]");
-            if (recipe.needHoney) conditions.Add("Honey [i:1134]");
-            if (recipe.needSnowBiome) conditions.Add("Snow Biome [i:593]");
-            if (recipe.needGraveyardBiome) conditions.Add("Graveyard [i:321]");
-
-            if (conditions.Any())
-            {
-                result.AppendLine();
-                result.Append($"Conditions: {string.Join(", ", conditions.Select(c => TextHelper.ColorRequirement(c)))}");
-            }
-
-            return result.ToString();
         }
 
         private string GetRecipeStringByRequired(Item item)
