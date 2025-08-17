@@ -71,7 +71,7 @@ namespace TerraGuide
                 }
             );
         }
-
+        
         // ADDED: Method to handle the new /terraguide admin command.
         private void TerraGuideCommand(CommandArgs args)
         {
@@ -99,7 +99,7 @@ namespace TerraGuide
             }
         }
 
-        // TWEAKED: This method has been fixed to resolve all compilation errors and warnings, while preserving original formatting.
+        // TWEAKED: This method has been fixed to resolve all compilation warnings by adding null-safety checks.
         private async void WikiCommand(CommandArgs args)
         {
             if (args.Parameters.Count < 1)
@@ -114,7 +114,7 @@ namespace TerraGuide
 
             try
             {
-                SendReply(args, $"Searching wiki for: {searchTerm}...", Color.Aqua); // TWEAKED: Replaced args.Player.Send...
+                SendReply(args, $"Searching wiki for: {searchTerm}...", Color.Aqua);
                 TShock.Log.Info($"Accessing search API URL: {searchUrl}");
 
                 var searchRequest = new HttpRequestMessage(HttpMethod.Get, searchUrl);
@@ -155,46 +155,46 @@ namespace TerraGuide
 
                             if (pages != null)
                             {
-                                // FIXED (CS8600, CS8602): Use FirstOrDefault to prevent crash on empty results.
+                                // TWEAKED (Fixes CS8600): Use FirstOrDefault to handle cases where the API might return an empty 'pages' object.
                                 var firstPageProperty = ((Newtonsoft.Json.Linq.JObject)pages)
                                     .Properties()
                                     .FirstOrDefault();
 
-                                if (firstPageProperty != null) // FIXED: Add null check to safely handle cases where no page is found.
+                                // TWEAKED (Fixes CS8602): Add a null check for the page property itself before trying to access its value.
+                                if (firstPageProperty != null)
                                 {
                                     var firstPage = firstPageProperty.Value;
 
-                                    // FIXED (CS1061, CS8602): Access JToken members using the indexer '[]' instead of '.'
-                                    // and check if the result is null or empty.
-                                    if (firstPage?["revisions"] != null && firstPage["revisions"].Any())
+                                    // TWEAKED (Fixes CS8604 & multiple CS8602): Use the null-conditional operator '?.' to safely access nested JSON properties.
+                                    // This prevents a crash if 'revisions', 'slots', 'main', or '*' is missing from the response. The ?. operator
+                                    // will stop the chain and return null instead of throwing an exception.
+                                    string? wikiText = firstPage?["revisions"]?[0]?["slots"]?["main"]?["*"]?.ToString();
+                                    
+                                    // TWEAKED: We only proceed if wikiText is not null after the safe access.
+                                    if (!string.IsNullOrWhiteSpace(wikiText))
                                     {
-                                        // FIXED (CS1061): Use indexers for deep access.
-                                        string wikiText = firstPage["revisions"][0]["slots"]["main"]["*"]
-                                            .ToString();
                                         wikiText = CleanWikiText(wikiText);
+                                        
+                                        // Split the text into chunks of reasonable size to avoid chat overflow
+                                        const int chunkSize = 500;
+                                        var chunks = SplitTextIntoChunks(wikiText, chunkSize);
 
-                                        if (!string.IsNullOrWhiteSpace(wikiText))
+                                        foreach (var chunk in chunks)
                                         {
-                                            // Split the text into chunks of reasonable size to avoid chat overflow
-                                            const int chunkSize = 500;
-                                            var chunks = SplitTextIntoChunks(wikiText, chunkSize);
-
-                                            foreach (var chunk in chunks)
-                                            {
-                                                SendReply(args, chunk, Color.White); // TWEAKED
-                                            }
-
-                                            SendReply(args, // TWEAKED
-                                                $"Read more: {WikiBaseUrl}{HttpUtility.UrlEncode(exactTitle)}", Color.Cyan
-                                            );
-                                            return;
+                                            SendReply(args, chunk, Color.White);
                                         }
+
+                                        SendReply(args,
+                                            $"Read more: {WikiBaseUrl}{HttpUtility.UrlEncode(exactTitle)}",
+                                            Color.Cyan
+                                        );
+                                        return;
                                     }
                                 }
                             }
                         }
                     }
-                    SendReply(args, // TWEAKED
+                    SendReply(args,
                         $"No information found for '{searchTerm}'. Try using the exact item name (e.g., 'Dirt Block' instead of 'dirt').",
                         Color.OrangeRed
                     );
@@ -202,17 +202,17 @@ namespace TerraGuide
             }
             catch (Exception ex)
             {
-                SendReply(args, $"Error accessing wiki: {ex.Message}", Color.Red); // TWEAKED
+                SendReply(args, $"Error accessing wiki: {ex.Message}", Color.Red);
                 TShock.Log.Error($"TerraGuide wiki error for term '{searchTerm}': {ex}");
             }
         }
-
+        
         // ORIGINAL RecipeCommand, TWEAKED with reverse lookup and enhanced UI.
         private void RecipeCommand(CommandArgs args)
         {
             if (args.Parameters.Count < 1)
             {
-                SendReply(args, "Usage: /recipe <item name> [-r]", Color.Red); // TWEAKED
+                SendReply(args, "Usage: /recipe <item name> [-r]", Color.Red);
                 return;
             }
 
@@ -270,7 +270,7 @@ namespace TerraGuide
 
             if (matchingItems.Count == 0)
             {
-                SendReply(args, $"No items found matching '{searchTerm}'.", Color.OrangeRed); // TWEAKED
+                SendReply(args, $"No items found matching '{searchTerm}'.", Color.OrangeRed);
                 return;
             }
 
@@ -290,14 +290,14 @@ namespace TerraGuide
 
             if (recipes.Count == 0)
             {
-                SendReply(args, // TWEAKED
+                SendReply(args,
                     $"No crafting recipe found for {bestMatch.item.Name}.",
                     Color.OrangeRed
                 );
                 return;
             }
 
-            SendReply(args, // TWEAKED
+            SendReply(args,
                 $"Crafting information for {TextHelper.ColorRecipeName(bestMatch.item.Name)}:",
                 Color.Gold
             );
@@ -311,19 +311,19 @@ namespace TerraGuide
                         .requiredTile.Where(t => t >= 0)
                         .Select(t => TextHelper.ColorStation(TileID.Search.GetName(t)))
                         .ToList();
-                    SendReply(args, // TWEAKED
+                    SendReply(args,
                         $"Crafting Station: {string.Join(" or ", stations)}",
                         Color.Yellow
                     );
                 }
 
                 // Show ingredients
-                SendReply(args, "Required Items:", Color.Yellow); // TWEAKED
+                SendReply(args, "Required Items:", Color.Yellow);
                 for (int i = 0; i < recipe.requiredItem.Length; i++)
                 {
                     if (recipe.requiredItem[i].type > 0)
                     {
-                        // TWEAKED: Upgraded output to include item icons [i:ID] and better formatting.
+                        // TWEAKED: Original logic now shows item icons and has better formatting.
                         var ingredient = recipe.requiredItem[i];
                         SendReply(args, 
                             $"• {TShock.Utils.ItemTag(ingredient)} {ingredient.stack}x {TextHelper.ColorItem(ingredient.Name)}",
@@ -352,16 +352,16 @@ namespace TerraGuide
                 // Display conditions if any exist
                 if (conditions.Count > 0)
                 {
-                    SendReply(args, "\nSpecial Requirements:", Color.Yellow); // TWEAKED
+                    SendReply(args, "\nSpecial Requirements:", Color.Yellow);
                     foreach (var condition in conditions)
                     {
-                        SendReply(args, $"• {condition}", Color.White); // TWEAKED
+                        SendReply(args, $"• {condition}", Color.White);
                     }
                 }
             }
         }
         
-        // ADDED: New helper method for the reverse recipe lookup feature.
+        // ADDED: New helper method for reverse recipe lookup.
         private string GetRecipeStringByRequired(Item item)
         {
             var result = new StringBuilder();
