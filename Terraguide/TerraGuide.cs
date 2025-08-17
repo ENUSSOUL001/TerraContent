@@ -23,7 +23,7 @@ namespace TerraGuide
 
         private readonly HttpClient _httpClient;
         private const string WikiApiUrl = "https://terraria.wiki.gg/api.php";
-        private static bool BroadcastMessages = true;
+        private static bool BroadcastMessages = true; // Broadcast by default as requested
 
         public TerraGuide(Main game)
             : base(game)
@@ -46,7 +46,7 @@ namespace TerraGuide
             {
                 HelpText = "Shows crafting info. Usage: /recipe <item name> [-r]",
             });
-            
+
             Commands.ChatCommands.Add(new Command("terraguide.admin", TerraGuideCommand, "terraguide")
             {
                 HelpText = "Manages TerraGuide settings. Usage: /terraguide broadcast",
@@ -65,13 +65,13 @@ namespace TerraGuide
                 args.Player.SendInfoMessage("Usage: /terraguide broadcast");
             }
         }
-        
+
         private void SendReply(CommandArgs args, string message, Color color)
         {
             var lines = SplitTextIntoChunks(message, 500);
             if (BroadcastMessages)
             {
-                foreach(var line in lines)
+                foreach (var line in lines)
                 {
                     TShock.Utils.Broadcast(line, color);
                 }
@@ -110,10 +110,11 @@ namespace TerraGuide
                     var searchJson = await searchResponse.Content.ReadAsStringAsync();
 
                     dynamic searchResult = Newtonsoft.Json.JsonConvert.DeserializeObject(searchJson);
+                    var titles = searchResult[1] as Newtonsoft.Json.Linq.JArray;
 
-                    if (searchResult[1].Count > 0)
+                    if (titles != null && titles.Count > 0)
                     {
-                        string exactTitle = searchResult[1][0].ToString();
+                        string exactTitle = titles[0].ToString();
                         string contentUrl =
                             $"{WikiApiUrl}?action=query&format=json&prop=revisions&rvprop=content&rvslots=main&titles={HttpUtility.UrlEncode(exactTitle)}";
 
@@ -182,7 +183,7 @@ namespace TerraGuide
                 args.Player.SendMultipleMatchError(items.Select(i => $"{i.Name}({i.netID})"));
                 return;
             }
-            
+
             var item = items[0];
 
             if (reverseLookup)
@@ -209,7 +210,7 @@ namespace TerraGuide
                 SendReply(args, result.ToString().TrimEnd(), Color.White);
             }
         }
-        
+
         private string GetRecipeStringByResult(Recipe recipe)
         {
             var result = new StringBuilder();
@@ -221,29 +222,29 @@ namespace TerraGuide
             result.AppendLine();
 
             var stations = recipe.requiredTile.Where(i => i >= 0).Select(GetStationName).Where(s => s != null).ToList();
-            if(stations.Any())
+            if (stations.Any())
             {
                 result.Append("Station: ");
                 result.Append(string.Join(", ", stations));
             }
             else
             {
-                result.Append("Station: By Hand");
+                result.Append("Station: By Hand [i:3258]");
             }
-            
+
             var conditions = new List<string>();
-            if (recipe.needWater) conditions.Add("Water");
-            if (recipe.needLava) conditions.Add("Lava");
-            if (recipe.needHoney) conditions.Add("Honey");
-            if (recipe.needSnowBiome) conditions.Add("Snow Biome");
-            if (recipe.needGraveyardBiome) conditions.Add("Graveyard");
+            if (recipe.needWater) conditions.Add("Water [i:126]");
+            if (recipe.needLava) conditions.Add("Lava [i:4825]");
+            if (recipe.needHoney) conditions.Add("Honey [i:1134]");
+            if (recipe.needSnowBiome) conditions.Add("Snow Biome [i:593]");
+            if (recipe.needGraveyardBiome) conditions.Add("Graveyard [i:321]");
 
             if (conditions.Any())
             {
                 result.AppendLine();
                 result.Append($"Conditions: {string.Join(", ", conditions)}");
             }
-            
+
             return result.ToString();
         }
 
@@ -257,7 +258,7 @@ namespace TerraGuide
             {
                 return $"No recipes use {item.Name} as a material.";
             }
-            
+
             var recipeLines = recipes.Select(r => r.createItem)
                                      .DistinctBy(i => i.netID)
                                      .Select(i => $"{TShock.Utils.ItemTag(i)} ({i.stack})");
@@ -266,11 +267,12 @@ namespace TerraGuide
             return result.ToString();
         }
 
-        private string GetStationName(int tileId)
+        private string? GetStationName(int tileId)
         {
             if (Terraria.Map.MapHelper.tileLookup.TryGetValue(tileId, out int legendIndex))
             {
-                return Lang._mapLegendCache[legendIndex]?.Value;
+                var langEntry = Lang._mapLegendCache[legendIndex];
+                return langEntry?.Value;
             }
             return null;
         }
