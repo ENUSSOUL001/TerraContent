@@ -20,7 +20,7 @@ namespace TerraGuide
         public override string Author => "jgranserver & RecipesBrowser contributors";
         public override string Description => "A helpful guide plugin for Terraria servers";
         public override string Name => "TerraGuide";
-        public override Version Version => new Version(3, 5);
+        public override Version Version => new Version(3, 6);
 
         private readonly HttpClient _httpClient;
         private const string WikiApiUrl = "https://terraria.wiki.gg/api.php";
@@ -32,7 +32,7 @@ namespace TerraGuide
             _httpClient = new HttpClient();
             _httpClient.DefaultRequestHeaders.Add(
                 "User-Agent",
-                "TerraGuide/3.5 (TShock Plugin; terraria.wiki.gg/wiki/User:Jgranserver)"
+                "TerraGuide/3.6 (TShock Plugin; terraria.wiki.gg/wiki/User:Jgranserver)"
             );
         }
 
@@ -85,7 +85,7 @@ namespace TerraGuide
                 }
             }
         }
-
+        
         private async void WikiCommand(CommandArgs args)
         {
             if (args.Parameters.Count < 1)
@@ -154,7 +154,7 @@ namespace TerraGuide
                 TShock.Log.Error($"TerraGuide wiki error for term '{searchTerm}': {ex}");
             }
         }
-
+        
         private void RecipeCommand(CommandArgs args)
         {
             if (args.Parameters.Count < 1)
@@ -199,40 +199,48 @@ namespace TerraGuide
 
                 foreach (var recipe in recipes)
                 {
-                    var stations = recipe.requiredTile.Where(t => t >= 0).Select(GetStationName).Where(s => !string.IsNullOrEmpty(s)).ToList();
-                    if (stations.Any())
-                    {
-                        SendReply(args, $"Crafting Station: {string.Join(" or ", stations.Select(s => TextHelper.ColorStation(s!)))}", Color.Yellow);
-                    }
-
-                    SendReply(args, "Required Items:", Color.Yellow);
-                    foreach (var ingredient in recipe.requiredItem)
-                    {
-                        if (ingredient.type > 0)
-                        {
-                            SendReply(args, TextHelper.MakeListItem($"{TShock.Utils.ItemTag(ingredient)} {ingredient.Name} ({ingredient.stack})"), Color.White);
-                        }
-                    }
-
-                    var conditions = new List<string>();
-                    if (recipe.needWater) conditions.Add("Water");
-                    if (recipe.needLava) conditions.Add("Lava");
-                    if (recipe.needHoney) conditions.Add("Honey");
-                    if (recipe.needSnowBiome) conditions.Add("Snow Biome");
-                    if (recipe.needGraveyardBiome) conditions.Add("Graveyard");
-
-                    if (conditions.Any())
-                    {
-                        SendReply(args, "Special Requirements:", Color.Yellow);
-                        foreach (var condition in conditions)
-                        {
-                            SendReply(args, TextHelper.MakeListItem(TextHelper.ColorRequirement(condition)), Color.White);
-                        }
-                    }
+                    SendRecipeResult(args, recipe);
                 }
             }
         }
 
+        private void SendRecipeResult(CommandArgs args, Recipe recipe)
+        {
+            // Required Items
+            SendReply(args, "Required Items:", Color.Yellow);
+            var ingredients = new List<string>();
+            foreach (var ingredient in recipe.requiredItem)
+            {
+                if (ingredient.type > 0)
+                {
+                    ingredients.Add(TextHelper.MakeListItem($"{TShock.Utils.ItemTag(ingredient)} {ingredient.Name} ({ingredient.stack})"));
+                }
+            }
+            SendReply(args, string.Join("\n", ingredients), Color.White);
+
+            // Crafting Station
+            var stations = recipe.requiredTile.Where(i => i >= 0).Select(GetStationName).Where(s => !string.IsNullOrEmpty(s)).ToList();
+            if (stations.Any())
+            {
+                SendReply(args, $"Crafting Station: {string.Join(" or ", stations.Select(s => TextHelper.ColorStation(s!)))}", Color.Yellow);
+            }
+
+            // Special Conditions
+            var conditions = new List<string>();
+            if (recipe.needWater) conditions.Add("Water");
+            if (recipe.needLava) conditions.Add("Lava");
+            if (recipe.needHoney) conditions.Add("Honey");
+            if (recipe.needSnowBiome) conditions.Add("Snow Biome");
+            if (recipe.needGraveyardBiome) conditions.Add("Graveyard");
+
+            if (conditions.Any())
+            {
+                SendReply(args, "Special Requirements:", Color.Yellow);
+                var conditionLines = conditions.Select(c => TextHelper.MakeListItem(TextHelper.ColorRequirement(c)));
+                SendReply(args, string.Join("\n", conditionLines), Color.White);
+            }
+        }
+        
         private string GetRecipeStringByRequired(Item item)
         {
             var result = new StringBuilder();
@@ -252,6 +260,7 @@ namespace TerraGuide
             return result.ToString();
         }
 
+        // Corrected GetStationName to handle potential nulls and array out of bounds issues.
         private string? GetStationName(int tileId)
         {
             if (tileId < 0 || tileId >= Terraria.Map.MapHelper.tileLookup.Length)
@@ -266,6 +275,7 @@ namespace TerraGuide
             }
 
             var langEntry = Lang._mapLegendCache[legendIndex];
+            // Explicitly check if the language entry itself is null before accessing its Value.
             return langEntry?.Value;
         }
 
