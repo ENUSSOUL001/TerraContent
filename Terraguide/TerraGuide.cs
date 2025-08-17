@@ -111,15 +111,8 @@ namespace TerraGuide
                     SendReply(args, $"No information found for '{searchTerm}'. Try using the exact item name (e.g., 'Dirt Block' instead of 'dirt').", Color.OrangeRed);
                     return;
                 }
-
-                var firstTitleToken = titles.FirstOrDefault();
-                if (firstTitleToken == null)
-                {
-                    SendReply(args, $"No valid page title found for '{searchTerm}'.", Color.OrangeRed);
-                    return;
-                }
-                string exactTitle = firstTitleToken.ToString();
-
+                
+                string exactTitle = titles[0].ToString();
                 string contentUrl =
                     $"{WikiApiUrl}?action=query&format=json&prop=revisions&rvprop=content&rvslots=main&titles={HttpUtility.UrlEncode(exactTitle)}";
 
@@ -131,7 +124,7 @@ namespace TerraGuide
                     SendReply(args, $"Could not parse wiki page content for '{exactTitle}'.", Color.OrangeRed);
                     return;
                 }
-
+                
                 var firstPage = pages.Values<JProperty>().FirstOrDefault()?.Value;
                 if (firstPage == null)
                 {
@@ -154,6 +147,7 @@ namespace TerraGuide
                 }
 
                 SendReply(args, $"No description found for '{exactTitle}'.", Color.OrangeRed);
+
             }
             catch (Exception ex)
             {
@@ -224,7 +218,7 @@ namespace TerraGuide
             }
             result.AppendLine();
 
-            var stations = recipe.requiredTile.Where(i => i >= 0).Select(GetStationName).Where(s => s != null).ToList();
+            var stations = recipe.requiredTile.Where(i => i >= 0).Select(GetStationName).Where(s => !string.IsNullOrEmpty(s)).ToList();
             if (stations.Any())
             {
                 result.Append("Station: ");
