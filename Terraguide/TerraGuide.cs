@@ -71,7 +71,7 @@ namespace TerraGuide
                 }
             );
         }
-
+        
         // ADDED: Method to handle the new /terraguide admin command.
         private void TerraGuideCommand(CommandArgs args)
         {
@@ -156,34 +156,32 @@ namespace TerraGuide
 
                             if (pages != null)
                             {
-                                var firstPageId = ((Newtonsoft.Json.Linq.JObject)pages)
-                                    .Properties()
-                                    .First()
-                                    .Name;
-                                var firstPage = pages[firstPageId];
-
-                                if (firstPage.revisions != null && firstPage.revisions.Count > 0)
+                                // FIXED: Warning CS8600 and CS8602 by checking for null before using the result.
+                                var firstPageProperty = ((Newtonsoft.Json.Linq.JObject)pages).Properties().FirstOrDefault();
+                                if (firstPageProperty != null)
                                 {
-                                    string wikiText = firstPage
-                                        .revisions[0]
-                                        .slots.main["*"]
-                                        .ToString();
-                                    wikiText = CleanWikiText(wikiText);
-
-                                    if (!string.IsNullOrWhiteSpace(wikiText))
+                                    var firstPage = firstPageProperty.Value;
+                                    if (firstPage != null && firstPage.revisions != null && firstPage.revisions.Count > 0)
                                     {
-                                        const int chunkSize = 500;
-                                        var chunks = SplitTextIntoChunks(wikiText, chunkSize);
+                                        string wikiText = firstPage
+                                            .revisions[0]
+                                            .slots.main["*"]
+                                            .ToString();
+                                        wikiText = CleanWikiText(wikiText);
 
-                                        foreach (var chunk in chunks)
+                                        if (!string.IsNullOrWhiteSpace(wikiText))
                                         {
-                                            // TWEAKED: Replaced args.Player.SendInfoMessage with SendReply.
-                                            SendReply(args, chunk, Color.White);
-                                        }
+                                            const int chunkSize = 500;
+                                            var chunks = SplitTextIntoChunks(wikiText, chunkSize);
 
-                                        // TWEAKED: Replaced args.Player.SendInfoMessage with SendReply.
-                                        SendReply(args, $"Read more: {WikiBaseUrl}{HttpUtility.UrlEncode(exactTitle)}", Color.Cyan);
-                                        return;
+                                            foreach (var chunk in chunks)
+                                            {
+                                                SendReply(args, chunk, Color.White);
+                                            }
+
+                                            SendReply(args, $"Read more: {WikiBaseUrl}{HttpUtility.UrlEncode(exactTitle)}", Color.Cyan);
+                                            return;
+                                        }
                                     }
                                 }
                             }
@@ -337,7 +335,7 @@ namespace TerraGuide
                 }
             }
         }
-
+        
         // ADDED: New helper method for the reverse recipe lookup feature.
         private string GetRecipeStringByRequired(Item item)
         {
@@ -537,7 +535,7 @@ namespace TerraGuide
                                     }
                                     craftingInfo.AppendLine($"• {amount}x {item}");
                                     TShock.Log.Info($"Added ingredient: {amount}x {item}");
-                                }
+                                 }
                             }
                         }
                     }
