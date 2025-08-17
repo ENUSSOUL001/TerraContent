@@ -265,13 +265,19 @@ namespace TerraGuide
 
         private string? GetStationName(int tileId)
         {
-            // THIS IS THE FIX: Explicitly cast to IDictionary to resolve ambiguity.
-            if (((IDictionary<int, int>)Terraria.Map.MapHelper.tileLookup).TryGetValue(tileId, out int legendIndex))
+            if (tileId < 0 || tileId >= Terraria.Map.MapHelper.tileLookup.Length)
             {
-                var langEntry = Lang._mapLegendCache[legendIndex];
-                return langEntry?.Value;
+                return null;
             }
-            return null;
+
+            int legendIndex = Terraria.Map.MapHelper.tileLookup[tileId];
+            if (legendIndex < 0 || legendIndex >= Lang._mapLegendCache.Length)
+            {
+                return null;
+            }
+
+            var langEntry = Lang._mapLegendCache[legendIndex];
+            return langEntry?.Value;
         }
 
         private string CleanWikiText(string wikiText)
