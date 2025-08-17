@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       json_config:
-        description: 'A JSON string containing all world generation options.'
+        description: 'A flat JSON string containing all world generation options.'
         required: true
         type: string
 
@@ -32,6 +32,7 @@ jobs:
 
           INI_FILE="Terra/terra-awg.ini"
 
+          # Using a flat JSON structure as required by the script
           echo "--- Generating terra-awg.ini ---"
           cat <<EOF > $INI_FILE
           [world]
@@ -102,7 +103,7 @@ jobs:
           [extra]
           map = $(echo "$JSON_DATA" | jq -r .map)
           EOF
-          
+
           echo "--- Generated terra-awg.ini ---"
           cat $INI_FILE
           echo "-------------------------------"
@@ -111,26 +112,9 @@ jobs:
         id: run_generator
         shell: bash
         run: |
-          max_attempts=14
-          for ((attempt=1; attempt<=max_attempts; attempt++)); do
-            echo "Running world generator, attempt $attempt of $max_attempts (30 minute timeout)..."
-            if timeout 30m bash -c 'cd Terra && ./terra-awg'; then
-              echo "World generator succeeded on attempt $attempt."
-              exit 0 
-            fi
-            exit_code=$?
-            if [ $exit_code -eq 124 ]; then
-              echo "Attempt $attempt failed: Timed out after 30 minutes."
-            else
-              echo "Attempt $attempt failed with a different error (exit code $exit_code)."
-            fi
-            if [ $attempt -lt $max_attempts ]; then
-              echo "Waiting 20 seconds before the next attempt..."
-              sleep 20
-            fi
-          done
-          echo "All $max_attempts attempts have failed."
-          exit 1
+          echo "Running world generator..."
+          cd Terra && ./terra-awg
+          echo "World generator finished."
 
       - name: Upload Success Artifact
         if: success()
@@ -144,7 +128,7 @@ jobs:
 
       - name: Handle Generation Failure
         if: failure()
-        run: echo "The world generator failed after all 14 attempts. Check the 'Run World Generator' step logs for details." > "generator-failure-log.txt"
+        run: echo "The world generator failed. Check the 'Run World Generator' step logs for details." > "generator-failure-log.txt"
 
       - name: Upload Failure Artifact
         if: failure()
