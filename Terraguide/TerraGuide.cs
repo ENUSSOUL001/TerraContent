@@ -20,7 +20,7 @@ namespace TerraGuide
         public override string Author => "jgranserver & RecipesBrowser contributors";
         public override string Description => "A helpful guide plugin for Terraria servers";
         public override string Name => "TerraGuide";
-        public override Version Version => new Version(3, 3);
+        public override Version Version => new Version(3, 5);
 
         private readonly HttpClient _httpClient;
         private const string WikiApiUrl = "https://terraria.wiki.gg/api.php";
@@ -32,7 +32,7 @@ namespace TerraGuide
             _httpClient = new HttpClient();
             _httpClient.DefaultRequestHeaders.Add(
                 "User-Agent",
-                "TerraGuide/3.3 (TShock Plugin; terraria.wiki.gg/wiki/User:Jgranserver)"
+                "TerraGuide/3.5 (TShock Plugin; terraria.wiki.gg/wiki/User:Jgranserver)"
             );
         }
 
@@ -45,7 +45,7 @@ namespace TerraGuide
 
             Commands.ChatCommands.Add(new Command(RecipeCommand, "recipe")
             {
-                HelpText = "Shows crafting info. Usage: /recipe <item name> [-r]",
+                HelpText = "Shows crafting recipes. Usage: /recipe <item name> [-r to see what this item crafts into]",
             });
 
             Commands.ChatCommands.Add(new Command("terraguide.admin", TerraGuideCommand, "terraguide")
@@ -184,7 +184,7 @@ namespace TerraGuide
 
             if (reverseLookup)
             {
-                SendReply(args, GetRecipeStringByRequired(item), Color.White);
+                SendReply(args, GetRecipeStringByRequired(item), Color.Yellow);
             }
             else
             {
@@ -195,25 +195,25 @@ namespace TerraGuide
                     return;
                 }
 
-                var result = new StringBuilder();
-                result.AppendLine($"Item: {TShock.Utils.ItemTag(item)}");
+                SendReply(args, $"Crafting information for {TextHelper.ColorRecipeName(item.Name)}:", Color.Gold);
 
                 for (var i = 0; i < recipes.Count; i++)
                 {
+                    var result = new StringBuilder();
                     result.AppendLine($"Recipe {i + 1}:");
-                    result.AppendLine(GetRecipeStringByResult(recipes[i]));
+                    result.Append(GetRecipeStringByResult(recipes[i]));
+                    SendReply(args, result.ToString(), Color.White);
                 }
-                SendReply(args, result.ToString().TrimEnd(), Color.White);
             }
         }
 
         private string GetRecipeStringByResult(Recipe recipe)
         {
             var result = new StringBuilder();
-            result.Append("Materials: ");
+            result.Append("Ingredients: ");
             foreach (var item in recipe.requiredItem.Where(r => r.stack > 0))
             {
-                result.Append($"{TShock.Utils.ItemTag(item)} ({item.stack}) ");
+                result.Append(TextHelper.MakeListItem($"{TShock.Utils.ItemTag(item)} {item.Name} ({item.stack})"));
             }
             result.AppendLine();
 
@@ -221,7 +221,7 @@ namespace TerraGuide
             if (stations.Any())
             {
                 result.Append("Station: ");
-                result.Append(string.Join(", ", stations));
+                result.Append(string.Join(", ", stations.Select(s => TextHelper.ColorStation(s))));
             }
             else
             {
@@ -238,7 +238,7 @@ namespace TerraGuide
             if (conditions.Any())
             {
                 result.AppendLine();
-                result.Append($"Conditions: {string.Join(", ", conditions)}");
+                result.Append($"Conditions: {string.Join(", ", conditions.Select(c => TextHelper.ColorRequirement(c)))}");
             }
 
             return result.ToString();
@@ -247,7 +247,7 @@ namespace TerraGuide
         private string GetRecipeStringByRequired(Item item)
         {
             var result = new StringBuilder();
-            result.AppendLine($"Items that can be crafted with {TShock.Utils.ItemTag(item)}:");
+            result.AppendLine($"Items that can be crafted with {TextHelper.ColorItem(item.Name)} {TShock.Utils.ItemTag(item)}:");
             var recipes = Main.recipe.Where(r => r != null && r.requiredItem.Any(i => i.type == item.type)).ToList();
 
             if (recipes.Count == 0)
@@ -257,7 +257,7 @@ namespace TerraGuide
 
             var recipeLines = recipes.Select(r => r.createItem)
                                      .DistinctBy(i => i.netID)
-                                     .Select(i => $"{TShock.Utils.ItemTag(i)} ({i.stack})");
+                                     .Select(i => $"{TShock.Utils.ItemTag(i)} {i.Name} ({i.stack})");
 
             result.Append(string.Join(", ", recipeLines));
             return result.ToString();
