@@ -20,7 +20,7 @@ namespace TerraGuide
         public override string Author => "jgranserver & RecipesBrowser contributors";
         public override string Description => "A helpful guide plugin for Terraria servers";
         public override string Name => "TerraGuide";
-        public override Version Version => new Version(3, 2);
+        public override Version Version => new Version(3, 3);
 
         private readonly HttpClient _httpClient;
         private const string WikiApiUrl = "https://terraria.wiki.gg/api.php";
@@ -32,7 +32,7 @@ namespace TerraGuide
             _httpClient = new HttpClient();
             _httpClient.DefaultRequestHeaders.Add(
                 "User-Agent",
-                "TerraGuide/3.2 (TShock Plugin; terraria.wiki.gg/wiki/User:Jgranserver)"
+                "TerraGuide/3.3 (TShock Plugin; terraria.wiki.gg/wiki/User:Jgranserver)"
             );
         }
 
@@ -265,7 +265,8 @@ namespace TerraGuide
 
         private string? GetStationName(int tileId)
         {
-            if (Terraria.Map.MapHelper.tileLookup.TryGetValue(tileId, out int legendIndex))
+            // THIS IS THE FIX: Explicitly cast to IDictionary to resolve ambiguity.
+            if (((IDictionary<int, int>)Terraria.Map.MapHelper.tileLookup).TryGetValue(tileId, out int legendIndex))
             {
                 var langEntry = Lang._mapLegendCache[legendIndex];
                 return langEntry?.Value;
