@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Web;
 using Terraria;
@@ -15,14 +16,14 @@ namespace TerraGuide
     [ApiVersion(2, 1)]
     public class TerraGuide : TerrariaPlugin
     {
-        public override string Author => "jgranserver";
+        public override string Author => "jgranserver & RecipesBrowser contributors";
         public override string Description => "A helpful guide plugin for Terraria servers";
         public override string Name => "TerraGuide";
-        public override Version Version => new Version(2, 1);
+        public override Version Version => new Version(3, 0);
 
         private readonly HttpClient _httpClient;
         private const string WikiApiUrl = "https://terraria.wiki.gg/api.php";
-        private static bool BroadcastMessages = false;
+        private static bool BroadcastMessages = true;
 
         public TerraGuide(Main game)
             : base(game)
@@ -30,7 +31,7 @@ namespace TerraGuide
             _httpClient = new HttpClient();
             _httpClient.DefaultRequestHeaders.Add(
                 "User-Agent",
-                "TerraGuide/2.1 (TShock Plugin; terraria.wiki.gg/wiki/User:Jgranserver)"
+                "TerraGuide/3.0 (TShock Plugin; terraria.wiki.gg/wiki/User:Jgranserver)"
             );
         }
 
@@ -43,7 +44,7 @@ namespace TerraGuide
 
             Commands.ChatCommands.Add(new Command(RecipeCommand, "recipe")
             {
-                HelpText = "Shows crafting information for items. Usage: /recipe <item name>",
+                HelpText = "Shows crafting info. Usage: /recipe <item name> [-r]",
             });
             
             Commands.ChatCommands.Add(new Command("terraguide.admin", TerraGuideCommand, "terraguide")
@@ -67,13 +68,17 @@ namespace TerraGuide
         
         private void SendReply(CommandArgs args, string message, Color color)
         {
+            var lines = SplitTextIntoChunks(message, 500);
             if (BroadcastMessages)
             {
-                TShock.Utils.Broadcast(message, color);
+                foreach(var line in lines)
+                {
+                    TShock.Utils.Broadcast(line, color);
+                }
             }
             else
             {
-                foreach (var line in SplitTextIntoChunks(message, 500))
+                foreach (var line in lines)
                 {
                     args.Player.SendMessage(line, color);
                 }
@@ -157,11 +162,14 @@ namespace TerraGuide
         {
             if (args.Parameters.Count < 1)
             {
-                args.Player.SendErrorMessage("Usage: /recipe <item name>");
+                args.Player.SendErrorMessage("Usage: /recipe <item name> [-r]");
                 return;
             }
 
-            string searchTerm = string.Join(" ", args.Parameters);
+            bool reverseLookup = args.Parameters.Contains("-r");
+            var searchTerms = args.Parameters.Where(p => p.ToLower() != "-r").ToList();
+            string searchTerm = string.Join(" ", searchTerms);
+
             var items = TShock.Utils.GetItemByName(searchTerm);
 
             if (items.Count == 0)
@@ -171,55 +179,100 @@ namespace TerraGuide
             }
             if (items.Count > 1)
             {
-                args.Player.SendMultipleMatchError(items.Select(i => i.Name));
+                args.Player.SendMultipleMatchError(items.Select(i => $"{i.Name}({i.netID})"));
                 return;
             }
+            
+            var item = items[0];
 
-            var bestMatch = items[0];
-            var recipes = Main.recipe.Where(r => r != null && r.createItem.type == bestMatch.type).ToList();
+            if (reverseLookup)
+            {
+                SendReply(args, GetRecipeStringByRequired(item), Color.White);
+            }
+            else
+            {
+                var recipes = Main.recipe.Where(r => r != null && r.createItem.type == item.type).ToList();
+                if (recipes.Count == 0)
+                {
+                    SendReply(args, $"No crafting recipe found for {item.Name}.", Color.OrangeRed);
+                    return;
+                }
+
+                var result = new StringBuilder();
+                result.AppendLine($"Item: {TShock.Utils.ItemTag(item)}");
+
+                for (var i = 0; i < recipes.Count; i++)
+                {
+                    result.AppendLine($"Recipe {i + 1}:");
+                    result.AppendLine(GetRecipeStringByResult(recipes[i]));
+                }
+                SendReply(args, result.ToString().TrimEnd(), Color.White);
+            }
+        }
+        
+        private string GetRecipeStringByResult(Recipe recipe)
+        {
+            var result = new StringBuilder();
+            result.Append("Materials: ");
+            foreach (var item in recipe.requiredItem.Where(r => r.stack > 0))
+            {
+                result.Append($"{TShock.Utils.ItemTag(item)} ({item.stack}) ");
+            }
+            result.AppendLine();
+
+            var stations = recipe.requiredTile.Where(i => i >= 0).Select(GetStationName).Where(s => s != null).ToList();
+            if(stations.Any())
+            {
+                result.Append("Station: ");
+                result.Append(string.Join(", ", stations));
+            }
+            else
+            {
+                result.Append("Station: By Hand");
+            }
+            
+            var conditions = new List<string>();
+            if (recipe.needWater) conditions.Add("Water");
+            if (recipe.needLava) conditions.Add("Lava");
+            if (recipe.needHoney) conditions.Add("Honey");
+            if (recipe.needSnowBiome) conditions.Add("Snow Biome");
+            if (recipe.needGraveyardBiome) conditions.Add("Graveyard");
+
+            if (conditions.Any())
+            {
+                result.AppendLine();
+                result.Append($"Conditions: {string.Join(", ", conditions)}");
+            }
+            
+            return result.ToString();
+        }
+
+        private string GetRecipeStringByRequired(Item item)
+        {
+            var result = new StringBuilder();
+            result.AppendLine($"Items that can be crafted with {TShock.Utils.ItemTag(item)}:");
+            var recipes = Main.recipe.Where(r => r != null && r.requiredItem.Any(i => i.type == item.type)).ToList();
 
             if (recipes.Count == 0)
             {
-                SendReply(args, $"No crafting recipe found for {bestMatch.Name}.", Color.OrangeRed);
-                return;
+                return $"No recipes use {item.Name} as a material.";
             }
+            
+            var recipeLines = recipes.Select(r => r.createItem)
+                                     .DistinctBy(i => i.netID)
+                                     .Select(i => $"{TShock.Utils.ItemTag(i)} ({i.stack})");
 
-            SendReply(args, $"Crafting information for {TextHelper.ColorRecipeName(bestMatch.Name)}:", Color.Gold);
+            result.Append(string.Join(", ", recipeLines));
+            return result.ToString();
+        }
 
-            foreach (var recipe in recipes)
+        private string GetStationName(int tileId)
+        {
+            if (Terraria.Map.MapHelper.tileLookup.TryGetValue(tileId, out int legendIndex))
             {
-                if (recipe.requiredTile != null && recipe.requiredTile.Length > 0)
-                {
-                    var stations = recipe.requiredTile.Where(t => t >= 0).Select(t => TextHelper.ColorStation(TileID.Search.GetName(t))).ToList();
-                    if(stations.Any())
-                        SendReply(args, $"Crafting Station: {string.Join(" or ", stations)}", Color.White);
-                }
-
-                SendReply(args, "Required Items:", Color.White);
-                for (int i = 0; i < recipe.requiredItem.Length; i++)
-                {
-                    if (recipe.requiredItem[i].type > 0)
-                    {
-                        SendReply(args, $"• {recipe.requiredItem[i].stack}x {TextHelper.ColorItem(recipe.requiredItem[i].Name)}", Color.White);
-                    }
-                }
-
-                var conditions = new List<string>();
-                if (recipe.needWater) conditions.Add("Must be near Water");
-                if (recipe.needLava) conditions.Add("Must be near Lava");
-                if (recipe.needHoney) conditions.Add("Must be near Honey");
-                if (recipe.needSnowBiome) conditions.Add("Must be in Snow biome");
-                if (recipe.needGraveyardBiome) conditions.Add("Must be in Graveyard biome");
-
-                if (conditions.Count > 0)
-                {
-                    SendReply(args, "\nSpecial Requirements:", Color.Yellow);
-                    foreach (var condition in conditions)
-                    {
-                        SendReply(args, $"• {condition}", Color.White);
-                    }
-                }
+                return Lang._mapLegendCache[legendIndex]?.Value;
             }
+            return null;
         }
 
         private string CleanWikiText(string wikiText)
