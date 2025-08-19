@@ -1,26 +1,17 @@
-name: Live Terminal with Auto-Commit
+name: Run Terra-AWG Live
 
 on:
   workflow_dispatch:
 
 jobs:
-  live-session:
+  run-program:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: Venv
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Start Live Terminal Session
-        uses: mxschmitt/action-tmate@v3
-
-      - name: Commit and Push Changes
+      - name: Run Terra-AWG
         run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add .
-          git commit -m "Automated: Sync files from live terminal session" || echo "No changes to commit"
-          git push
+          chmod +x ./TerraContent/Terra/terra-awg
+          ./TerraContent/Terra/terra-awg
