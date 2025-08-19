@@ -1,10 +1,10 @@
-name: Run Terra-AWG Live
+name: Run and Upload Artifact
 
 on:
   workflow_dispatch:
 
 jobs:
-  run-program:
+  build-and-upload:
     runs-on: ubuntu-latest
 
     steps:
@@ -15,3 +15,9 @@ jobs:
         run: |
           chmod +x Terra/terra-awg
           ./Terra/terra-awg
+
+      - name: Upload Output Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terra-output-files
+          path: .
