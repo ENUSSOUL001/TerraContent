@@ -13,5 +13,5 @@ jobs:
 
       - name: Run Terra-AWG
         run: |
-          chmod +x ./TerraContent/Terra/terra-awg
-          ./TerraContent/Terra/terra-awg
+          chmod +x Terra/terra-awg
+          ./Terra/terra-awg
