@@ -1,10 +1,10 @@
-name: Generate and Commit Files
+name: Live Terminal with Auto-Commit
 
 on:
   workflow_dispatch:
 
 jobs:
-  build-and-commit:
+  live-session:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -14,15 +14,13 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Generate Files
-        run: |
-          chmod +x ./Terra/terra-awg
-          ./Terra/terra-awg
+      - name: Start Live Terminal Session
+        uses: mxschmitt/action-tmate@v3
 
-      - name: Commit and Push Files
+      - name: Commit and Push Changes
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add .
-          git commit -m "Automated: Generate terra output files" || echo "No changes to commit"
+          git commit -m "Automated: Sync files from live terminal session" || echo "No changes to commit"
           git push
