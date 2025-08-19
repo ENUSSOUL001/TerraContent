@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./TerraContent/Venv
+        working-directory: Venv
 
     steps:
       - name: Checkout Repository
