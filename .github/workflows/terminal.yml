@@ -1,0 +1,17 @@
+name: Live Terminal
+
+on:
+  workflow_dispatch:
+
+jobs:
+  terminal:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./TerraContent/Venv
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
