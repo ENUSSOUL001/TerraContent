@@ -1,17 +1,28 @@
-name: Live Terminal
+name: Generate and Commit Files
 
 on:
   workflow_dispatch:
 
 jobs:
-  terminal:
+  build-and-commit:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./TerraContent/Venv
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
+      - name: Generate Files
+        run: |
+          chmod +x ./Terra/terra-awg
+          ./Terra/terra-awg
+
+      - name: Commit and Push Files
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add .
+          git commit -m "Automated: Generate terra output files" || echo "No changes to commit"
+          git push
