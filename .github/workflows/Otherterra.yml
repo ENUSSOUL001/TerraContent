@@ -122,7 +122,8 @@ jobs:
           
           echo "Using a timeout of ${timeout_value} minutes for this run."
 
-          if timeout ${timeout_value}m bash -c 'cd Terra && ./terra-awg'; then
+          # THIS IS THE CHANGED LINE
+          if timeout ${timeout_value}m bash -c 'cd Terra && stdbuf -oL ./terra-awg'; then
             echo "World generator succeeded."
           else
             exit_code=$?
