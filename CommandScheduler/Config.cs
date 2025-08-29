@@ -15,8 +15,8 @@ namespace CommandScheduler
 
     public class JoinTrigger
     {
-        public string TriggerName { get; set; }
-        public string Description { get; set; }
+        public string? TriggerName { get; set; }
+        public string? Description { get; set; }
         public List<string> PlayerNames { get; set; } = new List<string>();
         public List<string> GroupNames { get; set; } = new List<string>();
         public bool OneTimeExecution { get; set; }
