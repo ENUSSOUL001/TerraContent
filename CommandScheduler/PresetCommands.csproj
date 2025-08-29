@@ -3,7 +3,7 @@
     <TargetFramework>net6.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>CommandScheduler</AssemblyName>
+    <AssemblyName>PresetCommands</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="TShock" Version="5.2.3" />
