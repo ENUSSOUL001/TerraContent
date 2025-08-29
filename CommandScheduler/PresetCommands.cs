@@ -7,20 +7,21 @@ using Terraria;
 using TerrariaApi.Server;
 using TShockAPI;
 
-namespace CommandScheduler
+namespace PresetCommands
 {
     [ApiVersion(2, 1)]
-    public class CommandScheduler : TerrariaPlugin
+    public class PresetCommands : TerrariaPlugin
     {
         public override string Author => "enussoul";
-        public override string Description => "Simple stuff";
-        public override string Name => "CommandScheduler";
-        public override Version Version => new Version(1, 0);
+        public override string Description => "Create preset commands that run multiple commands.";
+        public override string Name => "PresetCommands";
+        public override Version Version => new Version("1.0");
 
         private Config _config;
-        private readonly string _configPath = Path.Combine(TShock.SavePath, "commands.json");
+        private readonly string _configPath = Path.Combine(TShock.SavePath, "PresetCommands.json");
+        private readonly List<Command> _registeredCommands = new List<Command>();
 
-        public CommandScheduler(Main game) : base(game)
+        public PresetCommands(Main game) : base(game)
         {
             _config = new Config();
         }
@@ -28,15 +29,14 @@ namespace CommandScheduler
         public override void Initialize()
         {
             LoadConfig();
-            ServerApi.Hooks.ServerJoin.Register(this, OnServerJoin);
+            RegisterPresetCommands();
         }
 
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
-                ServerApi.Hooks.ServerJoin.Deregister(this, OnServerJoin);
-                SaveConfig();
+                UnregisterPresetCommands();
             }
             base.Dispose(disposing);
         }
@@ -51,12 +51,6 @@ namespace CommandScheduler
                 {
                     _config = loadedConfig;
                 }
-                else
-                {
-                    TShock.Log.ConsoleError("[CommandScheduler] Failed to deserialize commands.json. Using a new empty configuration.");
-                    _config = new Config();
-                    SaveConfig();
-                }
             }
             else
             {
@@ -70,41 +64,49 @@ namespace CommandScheduler
             File.WriteAllText(_configPath, JsonConvert.SerializeObject(_config, Formatting.Indented));
         }
 
-        private void OnServerJoin(JoinEventArgs args)
+        private void RegisterPresetCommands()
         {
-            TSPlayer player = TShock.Players[args.Who];
-            if (player == null || !player.Active || !player.IsLoggedIn)
+            UnregisterPresetCommands();
+            foreach (var preset in _config.Settings.CommandPresets)
             {
-                return;
-            }
-
-            foreach (var trigger in _config.Settings.JoinTriggers)
-            {
-                bool appliesToAll = !trigger.PlayerNames.Any() && !trigger.GroupNames.Any();
-                bool nameMatch = trigger.PlayerNames.Any(n => n.Equals(player.Name, StringComparison.OrdinalIgnoreCase));
-                bool groupMatch = trigger.GroupNames.Any(g => g.Equals(player.Group.Name, StringComparison.OrdinalIgnoreCase));
-
-                if (appliesToAll || nameMatch || groupMatch)
+                if (string.IsNullOrWhiteSpace(preset.Name))
                 {
-                    if (trigger.OneTimeExecution)
-                    {
-                        if (trigger.ExecutedPlayersUUIDs.Contains(player.UUID))
-                        {
-                            continue;
-                        }
-                        trigger.ExecutedPlayersUUIDs.Add(player.UUID);
-                        SaveConfig();
-                    }
-                    ExecuteCommands(trigger.Commands, player);
+                    continue;
                 }
+
+                var command = new Command(preset.Permissions, HandlePresetCommand, preset.Name)
+                {
+                    HelpText = $"Executes the '{preset.Name}' command preset."
+                };
+
+                TShockAPI.Commands.ChatCommands.Add(command);
+                _registeredCommands.Add(command);
             }
         }
 
-        private void ExecuteCommands(List<string> commands, TSPlayer targetPlayer)
+        private void UnregisterPresetCommands()
         {
-            foreach (string cmd in commands)
+            foreach (var cmd in _registeredCommands)
             {
-                string processedCommand = cmd.Replace("{PLAYER_NAME}", $"\"{targetPlayer.Name}\"");
+                TShockAPI.Commands.ChatCommands.Remove(cmd);
+            }
+            _registeredCommands.Clear();
+        }
+
+        private void HandlePresetCommand(CommandArgs args)
+        {
+            var preset = _config.Settings.CommandPresets.FirstOrDefault(p =>
+                p.Name != null && p.Name.Equals(args.CommandName, StringComparison.OrdinalIgnoreCase));
+
+            if (preset == null)
+            {
+                args.Player.SendErrorMessage($"Preset command '{args.CommandName}' not found.");
+                return;
+            }
+            
+            foreach (var cmd in preset.Commands)
+            {
+                string processedCommand = cmd.Replace("{player}", $"\"{args.Player.Name}\"");
 
                 if (!processedCommand.StartsWith(TShock.Config.Settings.CommandSpecifier))
                 {
