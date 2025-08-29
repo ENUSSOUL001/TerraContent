@@ -22,6 +22,7 @@ namespace CommandScheduler
 
         public CommandScheduler(Main game) : base(game)
         {
+            _config = new Config();
         }
 
         public override void Initialize()
@@ -44,7 +45,18 @@ namespace CommandScheduler
         {
             if (File.Exists(_configPath))
             {
-                _config = JsonConvert.DeserializeObject<Config>(File.ReadAllText(_configPath));
+                var json = File.ReadAllText(_configPath);
+                var loadedConfig = JsonConvert.DeserializeObject<Config>(json);
+                if (loadedConfig != null)
+                {
+                    _config = loadedConfig;
+                }
+                else
+                {
+                    TShock.Log.ConsoleError("[CommandScheduler] Failed to deserialize commands.json. Using a new empty configuration.");
+                    _config = new Config();
+                    SaveConfig();
+                }
             }
             else
             {
@@ -93,10 +105,12 @@ namespace CommandScheduler
             foreach (string cmd in commands)
             {
                 string processedCommand = cmd.Replace("{PLAYER_NAME}", $"\"{targetPlayer.Name}\"");
+
                 if (!processedCommand.StartsWith(TShock.Config.Settings.CommandSpecifier))
                 {
                     processedCommand = TShock.Config.Settings.CommandSpecifier + processedCommand;
                 }
+                
                 TShockAPI.Commands.HandleCommand(TSPlayer.Server, processedCommand);
             }
         }
