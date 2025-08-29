@@ -74,9 +74,10 @@ namespace PresetCommands
                     continue;
                 }
 
-                var command = new Command(preset.Permissions, HandlePresetCommand, preset.Name)
+                var capturedPreset = preset;
+                var command = new Command(capturedPreset.Permissions, args => HandlePresetCommand(args, capturedPreset), capturedPreset.Name)
                 {
-                    HelpText = $"Executes the '{preset.Name}' command preset."
+                    HelpText = $"Executes the '{capturedPreset.Name}' command preset."
                 };
 
                 TShockAPI.Commands.ChatCommands.Add(command);
@@ -93,17 +94,8 @@ namespace PresetCommands
             _registeredCommands.Clear();
         }
 
-        private void HandlePresetCommand(CommandArgs args)
+        private void HandlePresetCommand(CommandArgs args, CommandPreset preset)
         {
-            var preset = _config.Settings.CommandPresets.FirstOrDefault(p =>
-                p.Name != null && p.Name.Equals(args.CommandName, StringComparison.OrdinalIgnoreCase));
-
-            if (preset == null)
-            {
-                args.Player.SendErrorMessage($"Preset command '{args.CommandName}' not found.");
-                return;
-            }
-            
             foreach (var cmd in preset.Commands)
             {
                 string processedCommand = cmd.Replace("{player}", $"\"{args.Player.Name}\"");
